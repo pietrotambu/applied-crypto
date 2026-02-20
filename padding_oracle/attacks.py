@@ -33,11 +33,20 @@ def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple
             forged = bytes(candidate_prev) + curr
 
             queries += 1
-            if oracle(forged):
-                intermediate[pos] = guess ^ pad
-                plaintext[pos] = intermediate[pos] ^ prev[pos]
-                found = True
-                break
+            if not oracle(forged):
+                continue
+
+            if pos == crypto.BLOCK_SIZE - 1:
+                probe = bytearray(candidate_prev)
+                probe[pos - 1] ^= 0x01
+                queries += 1
+                if not oracle(bytes(probe) + curr):
+                    continue
+
+            intermediate[pos] = guess ^ pad
+            plaintext[pos] = intermediate[pos] ^ prev[pos]
+            found = True
+            break
 
         if not found:
             raise AttackError(f"no valid byte candidate found at position {pos}")
