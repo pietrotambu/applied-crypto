@@ -3,5 +3,6 @@
 __all__ = [
     "attacks",
     "crypto",
+    "protocol",
     "services",
 ]
