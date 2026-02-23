@@ -1,10 +1,7 @@
-# CBC Padding Oracle Project (Python)
+# CBC Padding Oracle Project (Python, Tasks 2, 3, 4)
 
-This repository implements task-oriented CBC padding-oracle examples.
+This project currently supports:
+- Task 2: classic CBC padding-oracle plaintext recovery (boolean oracle).
+- A vulnerable MAC-then-encrypt receiver process exposed over localhost.
 
-Implemented currently:
-- task 2 primitives: CBC encrypt/decrypt and a boolean padding oracle service.
-
-Planned:
-- boolean oracle plaintext recovery workflow
-- timing-oracle workflow and benchmark tooling
+Timing-oracle attack and benchmark flows are added in later commits.
