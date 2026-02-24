@@ -190,7 +190,7 @@ def run_task4(args: argparse.Namespace) -> None:
 
         print("task4: timing-attack robustness under injected localhost noise")
         print(f"server={server_addr} base_delay_ms={args.base_delay_ms:.6f} trials={args.trials}")
-        print("jitter_ms success_rate avg_queries avg_elapsed_ms")
+        print("jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials")
 
         for i, jitter_ms in enumerate(jitters_ms):
             proxy_addr = process.free_local_addr()
@@ -213,39 +213,61 @@ def run_task4(args: argparse.Namespace) -> None:
             success = 0
             total_queries = 0
             total_elapsed_ms = 0.0
+            completed_trials = 0
+            error_trials = 0
+            last_error: Exception | None = None
 
             try:
-                process.wait_for_tcp(proxy_addr, timeout=3.0)
-                for _ in range(args.trials):
-                    try:
-                        with protocol.Client(proxy_addr, timeout=2.0) as client:
-                            ciphertext = client.encrypt(msg)
+                try:
+                    process.wait_for_tcp(proxy_addr, timeout=3.0)
+                except Exception as exc:
+                    error_trials = args.trials
+                    last_error = exc
+                else:
+                    for _ in range(args.trials):
+                        try:
+                            with protocol.Client(proxy_addr, timeout=2.0) as client:
+                                ciphertext = client.encrypt(msg)
 
-                            def oracle(candidate: bytes) -> int:
-                                _, delta_ns = client.check(candidate)
-                                return delta_ns
+                                def oracle(candidate: bytes) -> int:
+                                    _, delta_ns = client.check(candidate)
+                                    return delta_ns
 
-                            start = time.perf_counter_ns()
-                            recovered, queries = attacks.recover_ciphertext_block_timing(
-                                ciphertext,
-                                args.block_index,
-                                oracle,
-                                cfg,
-                            )
-                            elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
-                            total_elapsed_ms += elapsed_ms
-                            total_queries += queries
-                            if recovered == expected:
-                                success += 1
-                    except Exception:
-                        continue
+                                start = time.perf_counter_ns()
+                                recovered, queries = attacks.recover_ciphertext_block_timing(
+                                    ciphertext,
+                                    args.block_index,
+                                    oracle,
+                                    cfg,
+                                )
+                                elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
+                                total_elapsed_ms += elapsed_ms
+                                total_queries += queries
+                                completed_trials += 1
+                                if recovered == expected:
+                                    success += 1
+                        except Exception as exc:
+                            error_trials += 1
+                            last_error = exc
             finally:
                 process.stop_process(proxy_proc)
 
             success_rate = success / args.trials
-            avg_queries = total_queries / args.trials
-            avg_elapsed_ms = total_elapsed_ms / args.trials
-            print(f"{jitter_ms:.6f} {success_rate:.2f} {avg_queries:.1f} {avg_elapsed_ms:.2f}")
+            if completed_trials > 0:
+                avg_queries = total_queries / completed_trials
+                avg_elapsed_ms = total_elapsed_ms / completed_trials
+            else:
+                avg_queries = float("nan")
+                avg_elapsed_ms = float("nan")
+            print(
+                f"{jitter_ms:.6f} {success_rate:.2f} {avg_queries:.1f} {avg_elapsed_ms:.2f} "
+                f"{completed_trials} {error_trials}"
+            )
+            if error_trials > 0:
+                print(
+                    f"note: jitter_ms={jitter_ms:.6f} had {error_trials}/{args.trials} "
+                    f"trial errors (last_error={type(last_error).__name__ if last_error else 'unknown'})"
+                )
     finally:
         process.stop_process(server_proc)
 

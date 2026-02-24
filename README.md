@@ -68,15 +68,18 @@ Output format example:
 ```text
 task4: timing-attack robustness under injected localhost noise
 server=127.0.0.1:43977 base_delay_ms=0.000000 trials=3
-jitter_ms success_rate avg_queries avg_elapsed_ms
-2.000000 1.00 10112.0 31830.53
-4.000000 0.99 10112.0 38220.91
-8.000000 0.67 10112.0 49100.61
+jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials
+2.000000 1.00 10112.0 13500.28 3 0
+4.000000 1.00 10112.0 25351.21 3 0
+8.000000 0.67 10112.0 49087.97 3 0
+12.000000 0.00 10112.0 69397.78 3 0
+
 ...
 ```
 
 Interpretation:
-- `success_rate`: fraction of successful plaintext block recoveries.
-- `avg_queries`: average oracle calls per trial.
-- `avg_elapsed_ms`: average wall-clock attack time.
+- `success_rate`: fraction of successful plaintext block recoveries over all requested trials.
+- `avg_queries`: average oracle calls over completed trials (prints `nan` if none completed).
+- `avg_elapsed_ms`: average wall-clock attack time over completed trials (prints `nan` if none completed).
+- `completed_trials` and `error_trials`: help distinguish attack failures from runtime/proxy errors.
 - Increasing jitter generally lowers success and increases runtime.
