@@ -5,5 +5,6 @@ __all__ = [
     "crypto",
     "process",
     "protocol",
+    "proxy",
     "services",
 ]
