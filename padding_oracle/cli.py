@@ -5,7 +5,6 @@ import base64
 import hashlib
 import hmac
 import time
-from typing import Iterable
 
 from . import attacks, crypto, process, protocol, proxy, services
 

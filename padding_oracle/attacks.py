@@ -86,6 +86,17 @@ class TimingConfig:
         )
 
 
+@dataclass
+class Score:
+    guess: int
+    total: int
+    samples: int
+    forged: bytes
+
+    def avg(self) -> float:
+        return self.total / self.samples
+
+
 def recover_block_timing(prev: bytes, curr: bytes, oracle: TimingOracle, config: TimingConfig) -> tuple[bytes, int]:
     cfg = config.normalized()
     if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
@@ -101,7 +112,7 @@ def recover_block_timing(prev: bytes, curr: bytes, oracle: TimingOracle, config:
         for j in range(crypto.BLOCK_SIZE - 1, pos, -1):
             base[j] = intermediate[j] ^ pad
 
-        scores: list[list[object]] = []
+        scores: list[Score] = []
         for guess in range(256):
             candidate_prev = bytearray(base)
             candidate_prev[pos] = guess
@@ -109,19 +120,19 @@ def recover_block_timing(prev: bytes, curr: bytes, oracle: TimingOracle, config:
 
             total = _sample_duration_ns(oracle, forged, cfg.initial_samples)
             queries += cfg.initial_samples
-            scores.append([guess, total, cfg.initial_samples, forged])
+            scores.append(Score(guess=guess, total=total, samples=cfg.initial_samples, forged=forged))
 
-        scores.sort(key=lambda x: x[1] / x[2], reverse=True)
+        scores.sort(key=lambda s: s.avg(), reverse=True)
         limit = min(cfg.top_candidates, len(scores))
 
         for i in range(limit):
-            extra = _sample_duration_ns(oracle, scores[i][3], cfg.refine_samples)
+            extra = _sample_duration_ns(oracle, scores[i].forged, cfg.refine_samples)
             queries += cfg.refine_samples
-            scores[i][1] += extra
-            scores[i][2] += cfg.refine_samples
+            scores[i].total += extra
+            scores[i].samples += cfg.refine_samples
 
-        scores.sort(key=lambda x: x[1] / x[2], reverse=True)
-        best_guess = int(scores[0][0])
+        scores.sort(key=lambda s: s.avg(), reverse=True)
+        best_guess = scores[0].guess
 
         intermediate[pos] = best_guess ^ pad
         plaintext[pos] = intermediate[pos] ^ prev[pos]
