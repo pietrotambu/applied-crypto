@@ -27,14 +27,14 @@ def main() -> None:
     p_task2.add_argument("--message", default="CBC padding oracle demo for task 2.")
 
     p_task3 = sub.add_parser("task3", help="timing-oracle attack over localhost processes")
-    p_task3.add_argument("--message", default="timing-block-demo")
+    p_task3.add_argument("--message", default="0123456789abcdef")
     p_task3.add_argument("--block-index", type=int, default=1)
     p_task3.add_argument("--initial-samples", type=int, default=32)
     p_task3.add_argument("--refine-samples", type=int, default=128)
     p_task3.add_argument("--top-k", type=int, default=16)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
-    p_task4.add_argument("--message", default="timing-block-demo")
+    p_task4.add_argument("--message", default="0123456789abcdef")
     p_task4.add_argument("--block-index", type=int, default=1)
     p_task4.add_argument("--trials", type=int, default=3)
     p_task4.add_argument("--jitters-ms", default="0,0.05,0.1,0.2,0.5,1")

@@ -2,7 +2,7 @@
 
 # ----------------------- JOB PARAMETERS ---------------------- #
 
-#BSUB -J task3
+#BSUB -J task4
 
 #BSUB -q hpc
 
@@ -14,12 +14,10 @@
 
 #BSUB -W 00:45
 
-#BSUB -o ./batch/task3_%J.out
-#BSUB -e ./batch/task3_%J.err
+#BSUB -o ./batch/task4_%J.out
+#BSUB -e ./batch/task4_%J.err
 
 # ----------------------- JOB DEFINITION --------------------- #
 
 
-./.venv/bin/python3.12 -m padding_oracle.cli task3 --initial-samples 32 --refine-samples 128 --top-k 16
-
-./.venv/bin/python3.12 -m padding_oracle.cli task3 --initial-samples 64 --refine-samples 256 --top-k 32
+./.venv/bin/python3.12 -m padding_oracle.cli task4
