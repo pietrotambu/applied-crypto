@@ -15,7 +15,6 @@ def main() -> None:
     p_server.add_argument("--addr", default="127.0.0.1:4000")
     p_server.add_argument("--enc-key", required=True, help="hex AES key")
     p_server.add_argument("--mac-key", required=True, help="hex HMAC key")
-    p_server.add_argument("--mac-work", type=int, default=0)
 
     p_proxy = sub.add_parser("proxy", help="run localhost delay/jitter proxy")
     p_proxy.add_argument("--listen", required=True)
@@ -30,7 +29,6 @@ def main() -> None:
     p_task3 = sub.add_parser("task3", help="timing-oracle attack over localhost processes")
     p_task3.add_argument("--message", default="timing-block-demo")
     p_task3.add_argument("--block-index", type=int, default=1)
-    p_task3.add_argument("--mac-work", type=int, default=0)
     p_task3.add_argument("--initial-samples", type=int, default=32)
     p_task3.add_argument("--refine-samples", type=int, default=128)
     p_task3.add_argument("--top-k", type=int, default=16)
@@ -41,7 +39,6 @@ def main() -> None:
     p_task4.add_argument("--trials", type=int, default=3)
     p_task4.add_argument("--jitters-ms", default="0,0.05,0.1,0.2,0.5,1")
     p_task4.add_argument("--base-delay-ms", type=float, default=0.0)
-    p_task4.add_argument("--mac-work", type=int, default=0)
     p_task4.add_argument("--initial-samples", type=int, default=32)
     p_task4.add_argument("--refine-samples", type=int, default=128)
     p_task4.add_argument("--top-k", type=int, default=16)
@@ -65,7 +62,7 @@ def main() -> None:
 def run_server(args: argparse.Namespace) -> None:
     enc_key = utils.parse_hex_aes_key(args.enc_key)
     mac_key = utils.parse_hex_mac_key(args.mac_key)
-    service = services.MacThenEncryptService(enc_key, mac_key, mac_work=args.mac_work)
+    service = services.MacThenEncryptService(enc_key, mac_key)
     protocol.serve(args.addr, service)
 
 
@@ -107,8 +104,6 @@ def run_task3(args: argparse.Namespace) -> None:
             enc_key.hex(),
             "--mac-key",
             mac_key.hex(),
-            "--mac-work",
-            str(args.mac_work),
         ]
     )
 
@@ -171,8 +166,6 @@ def run_task4(args: argparse.Namespace) -> None:
             enc_key.hex(),
             "--mac-key",
             mac_key.hex(),
-            "--mac-work",
-            str(args.mac_work),
         ]
     )
 

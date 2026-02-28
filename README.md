@@ -78,7 +78,7 @@ make task4 ARGS='--trials 3 --jitters-ms 1,2,3,4'
 
 Recommended robust settings for sub-millisecond jitter:
 ```bash
-make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-samples 10 --top-k 12 --mac-work 8000'
+make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-samples 10 --top-k 12'
 ```
 
 Output format example:

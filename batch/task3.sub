@@ -20,7 +20,6 @@
 # ----------------------- JOB DEFINITION --------------------- #
 
 
-./.venv/bin/python3.12 -m padding_oracle.cli task3 --mac-work 0 --initial-samples 32 --refine-samples 128 --top-k 16
+./.venv/bin/python3.12 -m padding_oracle.cli task3 --initial-samples 32 --refine-samples 128 --top-k 16
 
-./.venv/bin/python3.12 -m padding_oracle.cli task3 --mac-work 0 --initial-samples 64 --refine-samples 256 --top-k 32
-
+./.venv/bin/python3.12 -m padding_oracle.cli task3 --initial-samples 64 --refine-samples 256 --top-k 32
