@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import crypto
-from .attacks_common import AttackError, TimingOracle
+from .. import crypto
+from .common import AttackError, TimingOracle
 
 
 @dataclass

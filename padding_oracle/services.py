@@ -26,7 +26,7 @@ class MacThenEncryptService:
     def __init__(self, enc_key: bytes, mac_key: bytes, mac_work: int = 4000):
         self._enc_key = bytes(enc_key)
         self._mac_key = bytes(mac_key)
-        self._mac_work = max(1, int(mac_work))
+        self._mac_work = max(0, int(mac_work))
 
     def encrypt(self, plaintext: bytes) -> bytes:
         tag = hmac.new(self._mac_key, plaintext, hashlib.sha256).digest()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from . import crypto
-from .attacks_common import AttackError, BoolOracle
+from .. import crypto
+from .common import AttackError, BoolOracle
 
 
 def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple[bytes, int]:
