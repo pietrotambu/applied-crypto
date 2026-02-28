@@ -1,13 +1,16 @@
-PYTHON ?= python3
+SYSTEM_PYTHON ?= python3
+VENV_DIR ?= .venv
+PYTHON ?= $(VENV_DIR)/bin/python
 PIP ?= $(PYTHON) -m pip
 CLI ?= $(PYTHON) -m padding_oracle.cli
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install install-editable run task2 task3 task4 test
+.PHONY: help venv install install-editable run task2 task3 task4 test
 
 help:
 	@echo "Targets:"
+	@echo "  venv              Create local virtual environment in .venv"
 	@echo "  install           Install dependencies from requirements.txt"
 	@echo "  install-editable  Install package in editable mode (adds padding-oracle command)"
 	@echo "  run               Run any CLI command. Example: make run COMMAND='task2'"
@@ -16,13 +19,19 @@ help:
 	@echo "  task4             Run task4 benchmark (use ARGS for options)"
 	@echo "  test              Run unit tests"
 
-install:
+$(PYTHON):
+	@$(SYSTEM_PYTHON) -m venv $(VENV_DIR)
+	@$(PIP) install -q --upgrade pip
+
+venv: $(PYTHON)
+
+install: $(PYTHON)
 	@$(PIP) install -q -r requirements.txt
 
-install-editable:
+install-editable: $(PYTHON)
 	@$(PIP) install -q -e .
 
-run:
+run: $(PYTHON)
 	@if [ -z "$(COMMAND)" ]; then \
 		echo "Usage: make run COMMAND='task2'"; \
 		echo "Example: make run COMMAND='task4 --trials 3 --jitters-ms 1,2,3,4'"; \
@@ -30,14 +39,14 @@ run:
 	fi
 	$(CLI) $(COMMAND)
 
-task2:
+task2: $(PYTHON)
 	$(CLI) task2 $(ARGS)
 
-task3:
+task3: $(PYTHON)
 	$(CLI) task3 $(ARGS)
 
-task4:
+task4: $(PYTHON)
 	$(CLI) task4 $(ARGS)
 
-test:
+test: $(PYTHON)
 	$(PYTHON) -m unittest discover -s tests -v

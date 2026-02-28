@@ -23,7 +23,7 @@ class BasicOracleService:
 
 
 class MacThenEncryptService:
-    def __init__(self, enc_key: bytes, mac_key: bytes, mac_work: int = 4000):
+    def __init__(self, enc_key: bytes, mac_key: bytes, mac_work: int = 0):
         self._enc_key = bytes(enc_key)
         self._mac_key = bytes(mac_key)
         self._mac_work = max(0, int(mac_work))

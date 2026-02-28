@@ -13,12 +13,16 @@ Design constraints:
 
 Prerequisites:
 - Python 3.10+
-- `pip`
 - `make`
 
 Show available commands:
 ```bash
 make help
+```
+
+Create local virtual environment:
+```bash
+make venv
 ```
 
 Install dependencies:
