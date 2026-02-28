@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
-import hmac
 import time
 
-from . import attacks, crypto, process, protocol, proxy, services
+from . import attacks, crypto, process, protocol, proxy, services, utils
 
 
 def main() -> None:
@@ -65,15 +63,15 @@ def main() -> None:
 
 
 def run_server(args: argparse.Namespace) -> None:
-    enc_key = _parse_hex_key(args.enc_key)
-    mac_key = _parse_hex_key(args.mac_key)
+    enc_key = utils.parse_hex_aes_key(args.enc_key)
+    mac_key = utils.parse_hex_mac_key(args.mac_key)
     service = services.MacThenEncryptService(enc_key, mac_key, mac_work=args.mac_work)
     protocol.serve(args.addr, service)
 
 
 def run_proxy(args: argparse.Namespace) -> None:
-    base_delay_s = _ms_to_seconds(args.base_delay_ms)
-    jitter_s = _ms_to_seconds(args.jitter_ms)
+    base_delay_s = utils.ms_to_seconds(args.base_delay_ms)
+    jitter_s = utils.ms_to_seconds(args.jitter_ms)
     proxy.serve_proxy(args.listen, args.target, base_delay_s, jitter_s, args.seed)
 
 
@@ -135,7 +133,7 @@ def run_task3(args: argparse.Namespace) -> None:
             )
             elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
-            expected = _expected_payload_block(msg, mac_key, args.block_index)
+            expected = utils.expected_payload_block(msg, mac_key, args.block_index)
 
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
@@ -154,10 +152,10 @@ def run_task4(args: argparse.Namespace) -> None:
     if args.trials < 1:
         raise ValueError("trials must be >= 1")
 
-    jitters_ms = _parse_csv_floats(args.jitters_ms)
-    _ = _ms_to_seconds(args.base_delay_ms)
+    jitters_ms = utils.parse_csv_floats(args.jitters_ms)
+    _ = utils.ms_to_seconds(args.base_delay_ms)
     for jitter_ms in jitters_ms:
-        _ = _ms_to_seconds(jitter_ms)
+        _ = utils.ms_to_seconds(jitter_ms)
 
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
@@ -180,7 +178,7 @@ def run_task4(args: argparse.Namespace) -> None:
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
-        expected = _expected_payload_block(msg, mac_key, args.block_index)
+        expected = utils.expected_payload_block(msg, mac_key, args.block_index)
 
         cfg = attacks.TimingConfig(
             initial_samples=args.initial_samples,
@@ -270,46 +268,6 @@ def run_task4(args: argparse.Namespace) -> None:
                 )
     finally:
         process.stop_process(server_proc)
-
-
-def _expected_payload_block(msg: bytes, mac_key: bytes, block_index: int) -> bytes:
-    tag = hmac.new(mac_key, msg, hashlib.sha256).digest()
-    payload = crypto.pkcs7_pad(msg + tag, crypto.BLOCK_SIZE)
-    blocks = len(payload) // crypto.BLOCK_SIZE
-    if block_index < 1 or block_index > blocks:
-        raise ValueError(f"block index {block_index} out of range [1,{blocks}]")
-    start = (block_index - 1) * crypto.BLOCK_SIZE
-    return payload[start : start + crypto.BLOCK_SIZE]
-
-
-def _parse_hex_key(value: str) -> bytes:
-    if not value:
-        raise ValueError("missing key")
-    out = bytes.fromhex(value)
-    if len(out) not in (16, 24, 32):
-        raise ValueError(f"invalid key length {len(out)}")
-    return out
-
-
-def _parse_csv_floats(raw: str) -> list[float]:
-    values: list[float] = []
-    for part in raw.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        value = float(part)
-        if value < 0:
-            raise ValueError("negative values are not allowed")
-        values.append(value)
-    if not values:
-        raise ValueError("no values provided")
-    return values
-
-
-def _ms_to_seconds(value: float) -> float:
-    if value < 0:
-        raise ValueError("must be non-negative")
-    return value / 1000.0
 
 
 if __name__ == "__main__":

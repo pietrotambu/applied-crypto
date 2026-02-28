@@ -7,4 +7,5 @@ __all__ = [
     "protocol",
     "proxy",
     "services",
+    "utils",
 ]

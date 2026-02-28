@@ -5,6 +5,8 @@ import socket
 import time
 from typing import Protocol
 
+from . import utils
+
 
 class Service(Protocol):
     def encrypt(self, plaintext: bytes) -> bytes: ...
@@ -13,7 +15,7 @@ class Service(Protocol):
 
 
 def serve(addr: str, service: Service) -> None:
-    host, port = _split_addr(addr)
+    host, port = utils.split_addr(addr)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((host, port))
@@ -80,7 +82,7 @@ def _handle_connection(conn: socket.socket, service: Service) -> None:
 
 class Client:
     def __init__(self, addr: str, timeout: float = 2.0):
-        host, port = _split_addr(addr)
+        host, port = utils.split_addr(addr)
         self._sock = socket.create_connection((host, port), timeout=timeout)
         self._reader = self._sock.makefile("rb")
         self._writer = self._sock.makefile("wb")
@@ -132,8 +134,3 @@ class Client:
         if not line:
             raise ConnectionError("connection closed")
         return line.strip()
-
-
-def _split_addr(addr: str) -> tuple[str, int]:
-    host, port_raw = addr.rsplit(":", 1)
-    return host, int(port_raw)

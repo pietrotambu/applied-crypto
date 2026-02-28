@@ -17,10 +17,10 @@ help:
 	@echo "  test              Run unit tests"
 
 install:
-	$(PIP) install -r requirements.txt
+	@$(PIP) install -q -r requirements.txt
 
 install-editable:
-	$(PIP) install -e .
+	@$(PIP) install -q -e .
 
 run:
 	@if [ -z "$(COMMAND)" ]; then \

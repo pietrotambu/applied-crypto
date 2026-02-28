@@ -49,6 +49,8 @@ def encrypt_cbc(key: bytes, plaintext: bytes) -> bytes:
 
 
 def decrypt_cbc_raw(key: bytes, ciphertext: bytes) -> bytes:
+    # len(ciphertext) needs to be always >= of BLOCK_SIZE * 2.
+    # C[0] = IV and C[1] = Fk(IV XOR P[1]). So even if P[1] it's empty, we always have at least 2 blocks (C[0] and C[1])
     if len(ciphertext) < 2 * BLOCK_SIZE or len(ciphertext) % BLOCK_SIZE != 0:
         raise InvalidCiphertextError("invalid ciphertext")
     iv = ciphertext[:BLOCK_SIZE]
