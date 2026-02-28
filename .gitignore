@@ -4,6 +4,10 @@ __pycache__/
 *.pyo
 .pytest_cache/
 
+
 .idea
 
 padding_oracle_python.egg-info
+
+batch/*.out
+batch/*.err

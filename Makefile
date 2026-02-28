@@ -1,4 +1,4 @@
-SYSTEM_PYTHON ?= python3
+SYSTEM_PYTHON ?= python3.12
 VENV_DIR ?= .venv
 PYTHON ?= $(VENV_DIR)/bin/python
 PIP ?= $(PYTHON) -m pip
@@ -50,3 +50,6 @@ task4: $(PYTHON)
 
 test: $(PYTHON)
 	$(PYTHON) -m unittest discover -s tests -v
+
+submit-%: ./batch/%.sub
+	@bsub < ./batch/$*.sub

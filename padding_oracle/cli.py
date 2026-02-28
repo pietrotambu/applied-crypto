@@ -31,9 +31,9 @@ def main() -> None:
     p_task3.add_argument("--message", default="timing-block-demo")
     p_task3.add_argument("--block-index", type=int, default=1)
     p_task3.add_argument("--mac-work", type=int, default=0)
-    p_task3.add_argument("--initial-samples", type=int, default=1)
-    p_task3.add_argument("--refine-samples", type=int, default=4)
-    p_task3.add_argument("--top-k", type=int, default=6)
+    p_task3.add_argument("--initial-samples", type=int, default=32)
+    p_task3.add_argument("--refine-samples", type=int, default=128)
+    p_task3.add_argument("--top-k", type=int, default=16)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
     p_task4.add_argument("--message", default="timing-block-demo")
@@ -42,9 +42,9 @@ def main() -> None:
     p_task4.add_argument("--jitters-ms", default="0,0.05,0.1,0.2,0.5,1")
     p_task4.add_argument("--base-delay-ms", type=float, default=0.0)
     p_task4.add_argument("--mac-work", type=int, default=0)
-    p_task4.add_argument("--initial-samples", type=int, default=1)
-    p_task4.add_argument("--refine-samples", type=int, default=5)
-    p_task4.add_argument("--top-k", type=int, default=8)
+    p_task4.add_argument("--initial-samples", type=int, default=32)
+    p_task4.add_argument("--refine-samples", type=int, default=128)
+    p_task4.add_argument("--top-k", type=int, default=16)
 
     args = parser.parse_args()
 
