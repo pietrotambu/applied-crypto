@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import sys
@@ -17,12 +18,37 @@ def free_local_addr() -> str:
         return f"{host}:{port}"
 
 
-def start_self_process(args: list[str]) -> subprocess.Popen:
+def _set_affinity_self(cpu: int) -> None:
+    if cpu < 0:
+        raise ValueError("cpu must be >= 0")
+    if not hasattr(os, "sched_setaffinity"):
+        raise RuntimeError("CPU affinity is not supported on this platform")
+    os.sched_setaffinity(0, {cpu})
+
+
+def set_current_process_affinity(cpu: int | None) -> None:
+    if cpu is None:
+        return
+    _set_affinity_self(cpu)
+
+
+def _make_affinity_preexec(cpu: int | None):
+    if cpu is None:
+        return None
+
+    def _preexec() -> None:
+        _set_affinity_self(cpu)
+
+    return _preexec
+
+
+def start_self_process(args: list[str], cpu: int | None = None) -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, "-m", "padding_oracle.cli", *args],
         cwd=str(PROJECT_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        preexec_fn=_make_affinity_preexec(cpu),
     )
 
 

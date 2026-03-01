@@ -47,7 +47,7 @@ make task3
 
 Run a fully custom CLI command:
 ```bash
-make run COMMAND='task4 --trials 3 --jitters-ms 1,2,3,4'
+make run COMMAND='task4 --trials 3 --jitters-ms 0,0.01,0.02'
 ```
 
 Equivalent direct Python commands (if you do not want to use `make`):
@@ -79,6 +79,16 @@ make task4 ARGS='--trials 3 --jitters-ms 1,2,3,4'
 Recommended robust settings for sub-millisecond jitter:
 ```bash
 make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-samples 10 --top-k 12'
+```
+
+Optional CPU pinning for `task4` roles:
+- `--attacker-cpu`
+- `--server-cpu`
+- `--proxy-cpu`
+
+Example:
+```bash
+make task4 ARGS='--trials 3 --jitters-ms 0,0.01,0.02 --attacker-cpu 1 --server-cpu 2 --proxy-cpu 3'
 ```
 
 Output format example:
@@ -126,7 +136,7 @@ Values are printed in both nanoseconds (`*_ns`) and milliseconds (`*_ms`) for:
 
 To diagnose task4 failures under tiny jitter values over the full server+proxy path:
 ```bash
-make timing-stability ARGS='--samples 20000 --warmup 500 --jitters-ms 0,0.000001,0.000002,0.000003,0.000004'
+make timing-stability ARGS='--samples 20000 --warmup 500 --jitters-ms 0,0.01,0.02'
 ```
 
 The proxy uses high-resolution delay handling for tiny delays (spin-wait for very small intervals, sleep+spin for larger intervals) so sub-microsecond jitter experiments are not flattened by `sleep()` granularity.
