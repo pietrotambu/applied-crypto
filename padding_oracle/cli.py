@@ -21,7 +21,6 @@ def main() -> None:
     p_proxy.add_argument("--target", required=True)
     p_proxy.add_argument("--base-delay-ms", type=float, default=0.0)
     p_proxy.add_argument("--jitter-ms", type=float, default=0.0)
-    p_proxy.add_argument("--seed", type=int, default=1)
 
     p_task2 = sub.add_parser("task2", help="basic boolean padding-oracle attack")
     p_task2.add_argument("--message", default="CBC padding oracle demo for task 2.")
@@ -69,7 +68,7 @@ def run_server(args: argparse.Namespace) -> None:
 def run_proxy(args: argparse.Namespace) -> None:
     base_delay_s = utils.ms_to_seconds(args.base_delay_ms)
     jitter_s = utils.ms_to_seconds(args.jitter_ms)
-    proxy.serve_proxy(args.listen, args.target, base_delay_s, jitter_s, args.seed)
+    proxy.serve_proxy(args.listen, args.target, base_delay_s, jitter_s)
 
 
 def run_task2(args: argparse.Namespace) -> None:
@@ -95,17 +94,7 @@ def run_task3(args: argparse.Namespace) -> None:
     msg = args.message.encode("utf-8")
 
     server_addr = process.free_local_addr()
-    server_proc = process.start_self_process(
-        [
-            "server",
-            "--addr",
-            server_addr,
-            "--enc-key",
-            enc_key.hex(),
-            "--mac-key",
-            mac_key.hex(),
-        ]
-    )
+    server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
@@ -157,17 +146,7 @@ def run_task4(args: argparse.Namespace) -> None:
     msg = args.message.encode("utf-8")
 
     server_addr = process.free_local_addr()
-    server_proc = process.start_self_process(
-        [
-            "server",
-            "--addr",
-            server_addr,
-            "--enc-key",
-            enc_key.hex(),
-            "--mac-key",
-            mac_key.hex(),
-        ]
-    )
+    server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
@@ -183,22 +162,15 @@ def run_task4(args: argparse.Namespace) -> None:
         print(f"server={server_addr} base_delay_ms={args.base_delay_ms:.6f} trials={args.trials}")
         print("jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials")
 
-        for i, jitter_ms in enumerate(jitters_ms):
+        for jitter_ms in jitters_ms:
             proxy_addr = process.free_local_addr()
             proxy_proc = process.start_self_process(
-                [
-                    "proxy",
-                    "--listen",
-                    proxy_addr,
-                    "--target",
-                    server_addr,
-                    "--base-delay-ms",
-                    f"{args.base_delay_ms}",
-                    "--jitter-ms",
-                    f"{jitter_ms}",
-                    "--seed",
-                    str(1337 + i),
-                ]
+                utils.proxy_command_args(
+                    listen_addr=proxy_addr,
+                    target_addr=server_addr,
+                    base_delay_ms=args.base_delay_ms,
+                    jitter_ms=jitter_ms,
+                )
             )
 
             success = 0

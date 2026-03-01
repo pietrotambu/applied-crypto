@@ -4,8 +4,9 @@ import argparse
 import bisect
 import statistics
 from dataclasses import dataclass
+import time
 
-from . import crypto, process, protocol, utils
+from . import attacks, crypto, process, protocol, utils
 
 
 @dataclass(frozen=True)
@@ -141,19 +142,20 @@ def _safe_div(num: float, den: float) -> float:
 def run() -> None:
     parser = argparse.ArgumentParser(
         prog="padding-oracle-timing-stability",
-        description="Measure task4-relevant latency stability over proxy jitter.",
+        description="Measure task4-like timing-attack robustness over proxy jitter.",
     )
-    parser.add_argument("--samples", type=int, default=10000, help="measured checks per class, per jitter")
-    parser.add_argument("--warmup", type=int, default=200, help="unreported warmup checks per class")
+    parser.add_argument("--trials", type=int, default=10, help="attack trials per jitter")
+    parser.add_argument("--block-index", type=int, default=1)
+    parser.add_argument("--initial-samples", type=int, default=32)
+    parser.add_argument("--refine-samples", type=int, default=128)
+    parser.add_argument("--top-k", type=int, default=16)
     parser.add_argument("--jitters-ms", default="0,0.000001,0.000002,0.000003,0.000004")
     parser.add_argument("--base-delay-ms", type=float, default=0.0)
     parser.add_argument("--message", default="timing-stability-message")
     args = parser.parse_args()
 
-    if args.samples < 1:
-        raise ValueError("samples must be >= 1")
-    if args.warmup < 0:
-        raise ValueError("warmup must be >= 0")
+    if args.trials < 1:
+        raise ValueError("trials must be >= 1")
 
     jitters_ms = utils.parse_csv_floats(args.jitters_ms)
     _ = utils.ms_to_seconds(args.base_delay_ms)
@@ -162,98 +164,76 @@ def run() -> None:
 
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
+    msg = args.message.encode("utf-8")
+    expected = utils.expected_payload_block(msg, mac_key, args.block_index)
+    cfg = attacks.TimingConfig(
+        initial_samples=args.initial_samples,
+        refine_samples=args.refine_samples,
+        top_candidates=args.top_k,
+    )
 
     server_addr = process.free_local_addr()
-    server_proc = process.start_self_process(
-        [
-            "server",
-            "--addr",
-            server_addr,
-            "--enc-key",
-            enc_key.hex(),
-            "--mac-key",
-            mac_key.hex(),
-        ]
-    )
+    server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
         print(
-            "jitter_ms class avg_ns median_ns p95_ns p99_ns stddev_ns "
-            "avg_ms median_ms p95_ms p99_ms stddev_ms"
-        )
-        print(
-            "jitter_ms separation_gap_ns separation_sigma_ns signal_to_noise cohen_d p(mac_bad>pad_bad)"
+            "jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials"
         )
 
-        for i, jitter_ms in enumerate(jitters_ms):
+        for jitter_ms in jitters_ms:
             proxy_addr = process.free_local_addr()
             proxy_proc = process.start_self_process(
-                [
-                    "proxy",
-                    "--listen",
-                    proxy_addr,
-                    "--target",
-                    server_addr,
-                    "--base-delay-ms",
-                    f"{args.base_delay_ms}",
-                    "--jitter-ms",
-                    f"{jitter_ms}",
-                    "--seed",
-                    str(4242 + i),
-                ]
+                utils.proxy_command_args(
+                    listen_addr=proxy_addr,
+                    target_addr=server_addr,
+                    base_delay_ms=args.base_delay_ms,
+                    jitter_ms=jitter_ms,
+                )
             )
             try:
                 process.wait_for_tcp(proxy_addr, timeout=3.0)
-                with protocol.Client(proxy_addr, timeout=2.0) as client:
-                    valid_ct = client.encrypt(args.message.encode("utf-8"))
-                    mac_bad_ct = _tamper_mac(valid_ct)
-                    pad_bad_ct = _ensure_invalid_padding(client, valid_ct)
+                success = 0
+                total_queries = 0
+                total_elapsed_ms = 0.0
+                completed_trials = 0
+                error_trials = 0
 
-                    ok_valid, _ = client.check(valid_ct)
-                    ok_mac, _ = client.check(mac_bad_ct)
-                    ok_pad, _ = client.check(pad_bad_ct)
-                    if not ok_valid:
-                        raise RuntimeError("valid sample is not valid")
-                    if ok_mac:
-                        raise RuntimeError("mac_bad sample unexpectedly valid")
-                    if ok_pad:
-                        raise RuntimeError("pad_bad sample unexpectedly valid")
+                for _ in range(args.trials):
+                    try:
+                        with protocol.Client(proxy_addr, timeout=2.0) as client:
+                            ciphertext = client.encrypt(msg)
 
-                    valid_ns, mac_bad_ns, pad_bad_ns = _collect(
-                        client=client,
-                        valid_ct=valid_ct,
-                        mac_bad_ct=mac_bad_ct,
-                        pad_bad_ct=pad_bad_ct,
-                        samples=args.samples,
-                        warmup=args.warmup,
-                    )
+                            def oracle(candidate: bytes) -> int:
+                                _, delta_ns = client.check(candidate)
+                                return delta_ns
 
-                valid_stats = _summarize(valid_ns)
-                mac_bad_stats = _summarize(mac_bad_ns)
-                pad_bad_stats = _summarize(pad_bad_ns)
+                            start_ns = time.perf_counter_ns()
+                            recovered, queries = attacks.recover_ciphertext_block_timing(
+                                ciphertext=ciphertext,
+                                block_index=args.block_index,
+                                oracle=oracle,
+                                config=cfg,
+                            )
+                            elapsed_ms = (time.perf_counter_ns() - start_ns) / 1_000_000.0
+                            total_elapsed_ms += elapsed_ms
+                            total_queries += queries
+                            completed_trials += 1
+                            if recovered == expected:
+                                success += 1
+                    except Exception:
+                        error_trials += 1
 
-                for label, stats in (
-                    ("valid", valid_stats),
-                    ("mac_bad", mac_bad_stats),
-                    ("pad_bad", pad_bad_stats),
-                ):
-                    print(
-                        f"{jitter_ms:.6f} {label} "
-                        f"{stats.avg_ns:.2f} {stats.median_ns:.2f} {stats.p95_ns:.2f} {stats.p99_ns:.2f} {stats.stddev_ns:.2f} "
-                        f"{stats.avg_ns/1_000_000.0:.6f} {stats.median_ns/1_000_000.0:.6f} "
-                        f"{stats.p95_ns/1_000_000.0:.6f} {stats.p99_ns/1_000_000.0:.6f} {stats.stddev_ns/1_000_000.0:.6f}"
-                    )
-
-                gap = mac_bad_stats.avg_ns - pad_bad_stats.avg_ns
-                separation_sigma = (mac_bad_stats.stddev_ns**2 + pad_bad_stats.stddev_ns**2) ** 0.5
-                snr = _safe_div(gap, separation_sigma)
-                pooled = _pooled_std(mac_bad_stats, pad_bad_stats)
-                cohen_d = _safe_div(gap, pooled)
-                p_mac_gt_pad = _p_greater(mac_bad_ns, pad_bad_ns)
+                success_rate = success / args.trials
+                if completed_trials > 0:
+                    avg_queries = total_queries / completed_trials
+                    avg_elapsed_ms = total_elapsed_ms / completed_trials
+                else:
+                    avg_queries = float("nan")
+                    avg_elapsed_ms = float("nan")
                 print(
-                    f"{jitter_ms:.6f} sep "
-                    f"{gap:.2f} {separation_sigma:.2f} {snr:.4f} {cohen_d:.4f} {p_mac_gt_pad:.6f}"
+                    f"{jitter_ms:.6f} {success_rate:.2f} {avg_queries:.1f} {avg_elapsed_ms:.2f} "
+                    f"{completed_trials} {error_trials}"
                 )
             finally:
                 process.stop_process(proxy_proc)

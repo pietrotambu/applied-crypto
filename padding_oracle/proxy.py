@@ -10,8 +10,8 @@ _SLEEP_COARSE_NS = 200_000
 _SPIN_GUARD_NS = 50_000
 
 
-def serve_proxy(listen_addr: str, target_addr: str, base_delay_s: float, jitter_s: float, seed: int) -> None:
-    rng = random.Random(seed)
+def serve_proxy(listen_addr: str, target_addr: str, base_delay_s: float, jitter_s: float) -> None:
+    rng = random.Random()
     listen_host, listen_port = utils.split_addr(listen_addr)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:

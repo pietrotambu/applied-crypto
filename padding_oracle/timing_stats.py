@@ -18,60 +18,25 @@ STEP_NAMES = (
 @dataclass(frozen=True)
 class Summary:
     count: int
-    min_ns: int
-    avg_ns: float
-    median_ns: float
-    p95_ns: float
-    p99_ns: float
-    max_ns: int
-    stddev_ns: float
-
-
-def _percentile(values: list[int], p: float) -> float:
-    if not values:
-        return 0.0
-    if len(values) == 1:
-        return float(values[0])
-    sorted_values = sorted(values)
-    rank = (len(sorted_values) - 1) * p
-    lo = int(rank)
-    hi = min(lo + 1, len(sorted_values) - 1)
-    weight = rank - lo
-    return float(sorted_values[lo] * (1.0 - weight) + sorted_values[hi] * weight)
+    min_ms: float
+    avg_ms: float
+    max_ms: float
 
 
 def _summarize(values: list[int]) -> Summary:
     if not values:
         return Summary(
             count=0,
-            min_ns=0,
-            avg_ns=0.0,
-            median_ns=0.0,
-            p95_ns=0.0,
-            p99_ns=0.0,
-            max_ns=0,
-            stddev_ns=0.0,
+            min_ms=0.0,
+            avg_ms=0.0,
+            max_ms=0.0,
         )
-    if len(values) == 1:
-        return Summary(
-            count=1,
-            min_ns=values[0],
-            avg_ns=float(values[0]),
-            median_ns=float(values[0]),
-            p95_ns=float(values[0]),
-            p99_ns=float(values[0]),
-            max_ns=values[0],
-            stddev_ns=0.0,
-        )
+    ns_to_ms = 1_000_000.0
     return Summary(
         count=len(values),
-        min_ns=min(values),
-        avg_ns=statistics.fmean(values),
-        median_ns=statistics.median(values),
-        p95_ns=_percentile(values, 0.95),
-        p99_ns=_percentile(values, 0.99),
-        max_ns=max(values),
-        stddev_ns=statistics.stdev(values),
+        min_ms=min(values) / ns_to_ms,
+        avg_ms=statistics.fmean(values) / ns_to_ms,
+        max_ms=max(values) / ns_to_ms,
     )
 
 
@@ -100,27 +65,13 @@ def _collect_samples(
 def _print_report(title: str, ok_count: int, trials: int, rows: dict[str, list[int]]) -> None:
     print(title)
     print(f"checks_ok={ok_count}/{trials}")
-    print(
-        "step count min_ns avg_ns median_ns p95_ns p99_ns max_ns stddev_ns "
-        "min_ms avg_ms median_ms p95_ms p99_ms max_ms stddev_ms"
-    )
+    print("step count min_ms avg_ms max_ms")
     for name in STEP_NAMES:
         stats = _summarize(rows[name])
-        min_ms = stats.min_ns / 1_000_000.0
-        avg_ms = stats.avg_ns / 1_000_000.0
-        median_ms = stats.median_ns / 1_000_000.0
-        p95_ms = stats.p95_ns / 1_000_000.0
-        p99_ms = stats.p99_ns / 1_000_000.0
-        max_ms = stats.max_ns / 1_000_000.0
-        stddev_ms = stats.stddev_ns / 1_000_000.0
+        step_name = name[:-3] if name.endswith("_ns") else name
         print(
-            f"{name} {stats.count} "
-            f"{stats.min_ns} {stats.avg_ns:.2f} {stats.median_ns:.2f} "
-            f"{stats.p95_ns:.2f} {stats.p99_ns:.2f} "
-            f"{stats.max_ns} {stats.stddev_ns:.2f} "
-            f"{min_ms:.6f} {avg_ms:.6f} {median_ms:.6f} "
-            f"{p95_ms:.6f} {p99_ms:.6f} "
-            f"{max_ms:.6f} {stddev_ms:.6f}"
+            f"{step_name} {stats.count} "
+            f"{stats.min_ms:.6f} {stats.avg_ms:.6f} {stats.max_ms:.6f}"
         )
 
 

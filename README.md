@@ -111,13 +111,9 @@ make timing-stats ARGS='--trials 10000 --warmup 500 --mode both'
 The report includes per-step:
 - minimum
 - average
-- median
-- p95
-- p99
 - maximum
-- standard deviation
 
-Values are printed in both nanoseconds (`*_ns`) and milliseconds (`*_ms`) for:
+Values are printed only in milliseconds (`min_ms`, `avg_ms`, `max_ms`) for:
 - `decrypt_cbc_raw`
 - `pkcs7_unpad`
 - `hmac_sha256`
@@ -126,13 +122,15 @@ Values are printed in both nanoseconds (`*_ns`) and milliseconds (`*_ms`) for:
 
 To diagnose task4 failures under tiny jitter values over the full server+proxy path:
 ```bash
-make timing-stability ARGS='--samples 20000 --warmup 500 --jitters-ms 0,0.01,0.02'
+make timing-stability ARGS='--trials 20 --jitters-ms 0,0.01,0.02 --initial-samples 4 --refine-samples 8 --top-k 8'
 ```
 
 The proxy uses high-resolution delay handling for tiny delays (spin-wait for very small intervals, sleep+spin for larger intervals) so sub-microsecond jitter experiments are not flattened by `sleep()` granularity.
 
-This prints class distributions (`valid`, `mac_bad`, `pad_bad`) and separation metrics:
-- `separation_gap_ns`: average(`mac_bad`) - average(`pad_bad`)
-- `signal_to_noise`: gap / sqrt(std_mac_bad^2 + std_pad_bad^2)
-- `cohen_d`
-- `p(mac_bad>pad_bad)` (pairwise probability that timing signal is correctly ordered)
+`timing-stability` now runs only the task4-like attack flow and prints:
+- `jitter_ms`
+- `success_rate`
+- `avg_queries`
+- `avg_elapsed_ms`
+- `completed_trials`
+- `error_trials`

@@ -6,15 +6,11 @@ from padding_oracle.timing_stats import _collect_samples, _summarize, _tampered_
 
 class TimingStatsTests(unittest.TestCase):
     def test_summarize_many_values(self) -> None:
-        summary = _summarize([10, 20, 30])
+        summary = _summarize([1_000_000, 2_000_000, 3_000_000])
         self.assertEqual(summary.count, 3)
-        self.assertEqual(summary.min_ns, 10)
-        self.assertEqual(summary.max_ns, 30)
-        self.assertEqual(summary.median_ns, 20)
-        self.assertGreaterEqual(summary.p95_ns, summary.median_ns)
-        self.assertGreaterEqual(summary.p99_ns, summary.p95_ns)
-        self.assertGreater(summary.avg_ns, 0)
-        self.assertGreater(summary.stddev_ns, 0)
+        self.assertEqual(summary.min_ms, 1.0)
+        self.assertEqual(summary.avg_ms, 2.0)
+        self.assertEqual(summary.max_ms, 3.0)
 
     def test_collect_samples_valid(self) -> None:
         enc_key = crypto.random_bytes(32)

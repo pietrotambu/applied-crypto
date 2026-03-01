@@ -50,6 +50,37 @@ def ms_to_seconds(value: float) -> float:
     return value / 1000.0
 
 
+def proxy_command_args(
+    listen_addr: str,
+    target_addr: str,
+    base_delay_ms: float,
+    jitter_ms: float,
+) -> list[str]:
+    return [
+        "proxy",
+        "--listen",
+        listen_addr,
+        "--target",
+        target_addr,
+        "--base-delay-ms",
+        f"{base_delay_ms}",
+        "--jitter-ms",
+        f"{jitter_ms}",
+    ]
+
+
+def server_command_args(addr: str, enc_key: bytes, mac_key: bytes) -> list[str]:
+    return [
+        "server",
+        "--addr",
+        addr,
+        "--enc-key",
+        enc_key.hex(),
+        "--mac-key",
+        mac_key.hex(),
+    ]
+
+
 def expected_payload_block(msg: bytes, mac_key: bytes, block_index: int) -> bytes:
     tag = hmac.new(mac_key, msg, hashlib.sha256).digest()
     payload = crypto.pkcs7_pad(msg + tag, crypto.BLOCK_SIZE)
