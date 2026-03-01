@@ -6,13 +6,13 @@
 
 #BSUB -q hpc
 
-#BSUB -n 1
+#BSUB -n 24
 
 #BSUB -R "rusage[mem=1GB]"
 
-# BSUB -R "select[model == XeonE5_2650v4] span[hosts=1] affinity[socket(1)]"
+#BSUB -R "select[model == XeonE5_2650v4] span[hosts=1]"
 
-#BSUB -W 00:45
+#BSUB -W 04:00
 
 #BSUB -o ./batch/task4_%J.out
 #BSUB -e ./batch/task4_%J.err
@@ -20,4 +20,4 @@
 # ----------------------- JOB DEFINITION --------------------- #
 
 
-./.venv/bin/python3.12 -m padding_oracle.cli task4
+./.venv/bin/python3.12 -m padding_oracle.cli task4 --initial-samples 4 --refine-samples 8 --top-k 8 --trials 50 --jitters-ms "0,0.005,0.01,0.015"

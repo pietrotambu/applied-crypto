@@ -2,7 +2,7 @@
 
 # ----------------------- JOB PARAMETERS ---------------------- #
 
-#BSUB -J task3
+#BSUB -J stats
 
 #BSUB -q hpc
 
@@ -14,11 +14,10 @@
 
 #BSUB -W 04:00
 
-#BSUB -o ./batch/task3_%J.out
-#BSUB -e ./batch/task3_%J.err
+#BSUB -o ./batch/stats_%J.out
+#BSUB -e ./batch/stats_%J.err
 
 # ----------------------- JOB DEFINITION --------------------- #
 
 
-./.venv/bin/python3.12 -m padding_oracle.cli task3 --initial-samples 4 --refine-samples 8 --top-k 8
-
+./.venv/bin/python3.12 -m padding_oracle.timing_stats --trials 100000 --warmup 500 --jitter-ms 0
