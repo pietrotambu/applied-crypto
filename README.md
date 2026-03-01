@@ -123,3 +123,14 @@ Values are printed in both nanoseconds (`*_ns`) and milliseconds (`*_ms`) for:
 - `hmac_sha256`
 - `compare_digest`
 - `total`
+
+To diagnose task4 failures under tiny jitter values over the full server+proxy path:
+```bash
+make timing-stability ARGS='--samples 20000 --warmup 500 --jitters-ms 0,0.000001,0.000002,0.000003,0.000004'
+```
+
+This prints class distributions (`valid`, `mac_bad`, `pad_bad`) and separation metrics:
+- `separation_gap_ns`: average(`mac_bad`) - average(`pad_bad`)
+- `signal_to_noise`: gap / sqrt(std_mac_bad^2 + std_pad_bad^2)
+- `cohen_d`
+- `p(mac_bad>pad_bad)` (pairwise probability that timing signal is correctly ordered)
