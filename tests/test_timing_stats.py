@@ -34,8 +34,7 @@ class TimingStatsTests(unittest.TestCase):
                 (True, 40),
             ]
         )
-        ok_count, samples = _collect_samples(client, b"ct", trials=3, warmup=1)
-        self.assertEqual(ok_count, 2)
+        samples = _collect_samples(client, b"ct", trials=3, warmup=1)
         self.assertEqual(samples, [20, 30, 40])
 
     def test_tamper_helpers_change_bytes(self) -> None:

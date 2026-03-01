@@ -37,19 +37,16 @@ def _collect_samples(
     ciphertext: bytes,
     trials: int,
     warmup: int,
-) -> tuple[int, list[int]]:
+) -> list[int]:
     samples_ns: list[int] = []
-    ok_count = 0
 
     for _ in range(warmup):
         client.check(ciphertext)
 
     for _ in range(trials):
-        ok, delta_ns = client.check(ciphertext)
-        if ok:
-            ok_count += 1
+        _, delta_ns = client.check(ciphertext)
         samples_ns.append(delta_ns)
-    return ok_count, samples_ns
+    return samples_ns
 
 
 def _tamper_mac(ciphertext: bytes) -> bytes:
@@ -136,13 +133,13 @@ def main() -> None:
             if ok_short:
                 raise RuntimeError("short-path sample unexpectedly valid")
 
-            long_ok, long_samples = _collect_samples(
+            long_samples = _collect_samples(
                 client=client,
                 ciphertext=long_path_ct,
                 trials=args.trials,
                 warmup=args.warmup,
             )
-            short_ok, short_samples = _collect_samples(
+            short_samples = _collect_samples(
                 client=client,
                 ciphertext=short_path_ct,
                 trials=args.trials,
@@ -158,13 +155,13 @@ def main() -> None:
             f"(trials={args.trials}, warmup={args.warmup}, "
             f"base_delay_ms={args.base_delay_ms:.6f}, jitter_ms={args.jitter_ms:.6f})"
         )
-        print("path checks_ok min_ms avg_ms max_ms")
+        print("path min_ms avg_ms max_ms")
         print(
-            f"long_journey {long_ok}/{args.trials} "
+            f"long_journey "
             f"{long_stats.min_ms:.6f} {long_stats.avg_ms:.6f} {long_stats.max_ms:.6f}"
         )
         print(
-            f"short_journey {short_ok}/{args.trials} "
+            f"short_journey "
             f"{short_stats.min_ms:.6f} {short_stats.avg_ms:.6f} {short_stats.max_ms:.6f}"
         )
         print(f"delta_avg_ms(long-short) {delta_avg_ms:.6f}")
