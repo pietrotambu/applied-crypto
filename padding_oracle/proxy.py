@@ -6,6 +6,9 @@ import time
 
 from . import utils
 
+_SLEEP_COARSE_NS = 200_000
+_SPIN_GUARD_NS = 50_000
+
 
 def serve_proxy(listen_addr: str, target_addr: str, base_delay_s: float, jitter_s: float, seed: int) -> None:
     rng = random.Random(seed)
@@ -78,4 +81,24 @@ def _delay(rng: random.Random, base_delay_s: float, jitter_s: float) -> None:
         if total < 0:
             total = 0.0
     if total > 0:
-        time.sleep(total)
+        _sleep_precise(total)
+
+
+def _sleep_precise(total_s: float) -> None:
+    # Use busy-wait for tiny delays so sub-microsecond jitter is not rounded away
+    # by scheduler-backed sleep resolution. For larger delays, sleep most of the
+    # interval and finish with a short spin.
+    total_ns = int(total_s * 1_000_000_000)
+    if total_ns <= 0:
+        return
+
+    start_ns = time.perf_counter_ns()
+    deadline_ns = start_ns + total_ns
+
+    if total_ns >= _SLEEP_COARSE_NS:
+        sleep_ns = total_ns - _SPIN_GUARD_NS
+        if sleep_ns > 0:
+            time.sleep(sleep_ns / 1_000_000_000.0)
+
+    while time.perf_counter_ns() < deadline_ns:
+        pass

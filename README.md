@@ -129,6 +129,8 @@ To diagnose task4 failures under tiny jitter values over the full server+proxy p
 make timing-stability ARGS='--samples 20000 --warmup 500 --jitters-ms 0,0.000001,0.000002,0.000003,0.000004'
 ```
 
+The proxy uses high-resolution delay handling for tiny delays (spin-wait for very small intervals, sleep+spin for larger intervals) so sub-microsecond jitter experiments are not flattened by `sleep()` granularity.
+
 This prints class distributions (`valid`, `mac_bad`, `pad_bad`) and separation metrics:
 - `separation_gap_ns`: average(`mac_bad`) - average(`pad_bad`)
 - `signal_to_noise`: gap / sqrt(std_mac_bad^2 + std_pad_bad^2)
