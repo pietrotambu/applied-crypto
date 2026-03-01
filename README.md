@@ -100,3 +100,26 @@ Interpretation:
 - `avg_elapsed_ms`: average wall-clock attack time over completed trials (prints `nan` if none completed).
 - `completed_trials` and `error_trials`: help distinguish attack failures from runtime/proxy errors.
 - Increasing jitter generally lowers success and increases runtime.
+
+## Timing Statistics Script
+
+Analyze `MacThenEncryptService.check()` timing breakdown over many retries (valid and tampered ciphertext):
+```bash
+make timing-stats ARGS='--trials 10000 --warmup 500 --mode both'
+```
+
+The report includes per-step:
+- minimum
+- average
+- median
+- p95
+- p99
+- maximum
+- standard deviation
+
+Values are printed in both nanoseconds (`*_ns`) and milliseconds (`*_ms`) for:
+- `decrypt_cbc_raw`
+- `pkcs7_unpad`
+- `hmac_sha256`
+- `compare_digest`
+- `total`

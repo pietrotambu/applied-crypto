@@ -6,7 +6,7 @@ CLI ?= $(PYTHON) -m padding_oracle.cli
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv install install-editable run task2 task3 task4 test
+.PHONY: help venv install install-editable run task2 task3 task4 timing-stats test
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  task2             Run task2 demo (use ARGS for options)"
 	@echo "  task3             Run task3 demo (use ARGS for options)"
 	@echo "  task4             Run task4 benchmark (use ARGS for options)"
+	@echo "  timing-stats      Analyze per-step check() timing statistics (use ARGS for options)"
 	@echo "  test              Run unit tests"
 
 $(PYTHON):
@@ -47,6 +48,9 @@ task3: $(PYTHON)
 
 task4: $(PYTHON)
 	$(CLI) task4 $(ARGS)
+
+timing-stats: $(PYTHON)
+	$(PYTHON) -m padding_oracle.timing_stats $(ARGS)
 
 test: $(PYTHON)
 	$(PYTHON) -m unittest discover -s tests -v
