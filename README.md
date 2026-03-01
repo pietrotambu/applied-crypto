@@ -84,7 +84,7 @@ make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-s
 Output format example:
 ```text
 task4: timing-attack robustness under injected localhost noise
-server=127.0.0.1:43977 base_delay_ms=0.000000 trials=3
+server=127.0.0.1:43977 trials=3
 jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials
 2.000000 1.00 10112.0 13500.28 3 0
 4.000000 1.00 10112.0 25351.21 3 0
@@ -105,7 +105,7 @@ Interpretation:
 
 Analyze task4-style timing branch separation over many retries (through server + proxy):
 ```bash
-make timing-stats ARGS='--trials 10000 --warmup 500 --base-delay-ms 0 --jitter-ms 0.01'
+make timing-stats ARGS='--trials 10000 --warmup 500 --jitter-ms 0.01'
 ```
 
 The report is intentionally simple and prints:

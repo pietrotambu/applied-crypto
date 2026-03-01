@@ -53,7 +53,6 @@ def ms_to_seconds(value: float) -> float:
 def proxy_command_args(
     listen_addr: str,
     target_addr: str,
-    base_delay_ms: float,
     jitter_ms: float,
 ) -> list[str]:
     return [
@@ -62,8 +61,6 @@ def proxy_command_args(
         listen_addr,
         "--target",
         target_addr,
-        "--base-delay-ms",
-        f"{base_delay_ms}",
         "--jitter-ms",
         f"{jitter_ms}",
     ]

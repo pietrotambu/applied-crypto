@@ -89,7 +89,6 @@ def main() -> None:
     parser.add_argument("--trials", type=int, default=10000, help="measured checks per path")
     parser.add_argument("--warmup", type=int, default=200, help="unreported warmup checks per path")
     parser.add_argument("--message", default="timing-stats-message", help="plaintext used for encrypted sample")
-    parser.add_argument("--base-delay-ms", type=float, default=0.0, help="proxy base delay")
     parser.add_argument("--jitter-ms", type=float, default=0.0, help="proxy jitter")
     args = parser.parse_args()
 
@@ -97,7 +96,6 @@ def main() -> None:
         raise ValueError("trials must be >= 1")
     if args.warmup < 0:
         raise ValueError("warmup must be >= 0")
-    _ = utils.ms_to_seconds(args.base_delay_ms)
     _ = utils.ms_to_seconds(args.jitter_ms)
 
     enc_key = crypto.random_bytes(32)
@@ -112,7 +110,6 @@ def main() -> None:
         utils.proxy_command_args(
             listen_addr=proxy_addr,
             target_addr=server_addr,
-            base_delay_ms=args.base_delay_ms,
             jitter_ms=args.jitter_ms,
         )
     )
@@ -153,7 +150,7 @@ def main() -> None:
         print(
             "flow4 path timing stats "
             f"(trials={args.trials}, warmup={args.warmup}, "
-            f"base_delay_ms={args.base_delay_ms:.6f}, jitter_ms={args.jitter_ms:.6f})"
+            f"jitter_ms={args.jitter_ms:.6f})"
         )
         print("path min_ms avg_ms max_ms")
         print(

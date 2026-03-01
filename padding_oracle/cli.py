@@ -19,7 +19,6 @@ def main() -> None:
     p_proxy = sub.add_parser("proxy", help="run localhost delay/jitter proxy")
     p_proxy.add_argument("--listen", required=True)
     p_proxy.add_argument("--target", required=True)
-    p_proxy.add_argument("--base-delay-ms", type=float, default=0.0)
     p_proxy.add_argument("--jitter-ms", type=float, default=0.0)
 
     p_task2 = sub.add_parser("task2", help="basic boolean padding-oracle attack")
@@ -37,7 +36,6 @@ def main() -> None:
     p_task4.add_argument("--block-index", type=int, default=1)
     p_task4.add_argument("--trials", type=int, default=3)
     p_task4.add_argument("--jitters-ms", default="0,0.01,0.02")
-    p_task4.add_argument("--base-delay-ms", type=float, default=0.0)
     p_task4.add_argument("--initial-samples", type=int, default=32)
     p_task4.add_argument("--refine-samples", type=int, default=128)
     p_task4.add_argument("--top-k", type=int, default=16)
@@ -66,9 +64,8 @@ def run_server(args: argparse.Namespace) -> None:
 
 
 def run_proxy(args: argparse.Namespace) -> None:
-    base_delay_s = utils.ms_to_seconds(args.base_delay_ms)
     jitter_s = utils.ms_to_seconds(args.jitter_ms)
-    proxy.serve_proxy(args.listen, args.target, base_delay_s, jitter_s)
+    proxy.serve_proxy(args.listen, args.target, jitter_s)
 
 
 def run_task2(args: argparse.Namespace) -> None:
@@ -137,7 +134,6 @@ def run_task4(args: argparse.Namespace) -> None:
         raise ValueError("trials must be >= 1")
 
     jitters_ms = utils.parse_csv_floats(args.jitters_ms)
-    _ = utils.ms_to_seconds(args.base_delay_ms)
     for jitter_ms in jitters_ms:
         _ = utils.ms_to_seconds(jitter_ms)
 
@@ -159,7 +155,7 @@ def run_task4(args: argparse.Namespace) -> None:
         )
 
         print("task4: timing-attack robustness under injected localhost noise")
-        print(f"server={server_addr} base_delay_ms={args.base_delay_ms:.6f} trials={args.trials}")
+        print(f"server={server_addr} trials={args.trials}")
         print("jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials")
 
         for jitter_ms in jitters_ms:
@@ -168,7 +164,6 @@ def run_task4(args: argparse.Namespace) -> None:
                 utils.proxy_command_args(
                     listen_addr=proxy_addr,
                     target_addr=server_addr,
-                    base_delay_ms=args.base_delay_ms,
                     jitter_ms=jitter_ms,
                 )
             )

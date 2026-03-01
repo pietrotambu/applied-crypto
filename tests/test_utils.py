@@ -27,7 +27,6 @@ class UtilsTests(unittest.TestCase):
         args = utils.proxy_command_args(
             listen_addr="127.0.0.1:1111",
             target_addr="127.0.0.1:2222",
-            base_delay_ms=0.0,
             jitter_ms=0.01,
         )
         self.assertEqual(
@@ -38,8 +37,6 @@ class UtilsTests(unittest.TestCase):
                 "127.0.0.1:1111",
                 "--target",
                 "127.0.0.1:2222",
-                "--base-delay-ms",
-                "0.0",
                 "--jitter-ms",
                 "0.01",
             ],

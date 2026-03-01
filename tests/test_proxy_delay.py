@@ -22,16 +22,16 @@ class ProxyDelayTests(unittest.TestCase):
         rng = Mock()
         rng.uniform.return_value = -0.002
         with patch("padding_oracle.proxy._sleep_precise") as wait_mock:
-            proxy._delay(rng, base_delay_s=0.001, jitter_s=0.002)
+            proxy._delay(rng, jitter_s=0.002)
         wait_mock.assert_not_called()
 
     def test_delay_positive_total_uses_precise_wait(self) -> None:
         rng = Mock()
         rng.uniform.return_value = 0.0005
         with patch("padding_oracle.proxy._sleep_precise") as wait_mock:
-            proxy._delay(rng, base_delay_s=0.001, jitter_s=0.002)
+            proxy._delay(rng, jitter_s=0.002)
         wait_mock.assert_called_once()
-        self.assertAlmostEqual(wait_mock.call_args.args[0], 0.0015, places=9)
+        self.assertAlmostEqual(wait_mock.call_args.args[0], 0.0005, places=9)
 
 
 if __name__ == "__main__":

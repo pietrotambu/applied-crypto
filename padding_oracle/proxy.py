@@ -10,7 +10,7 @@ _SLEEP_COARSE_NS = 200_000
 _SPIN_GUARD_NS = 50_000
 
 
-def serve_proxy(listen_addr: str, target_addr: str, base_delay_s: float, jitter_s: float) -> None:
+def serve_proxy(listen_addr: str, target_addr: str, jitter_s: float) -> None:
     rng = random.Random()
     listen_host, listen_port = utils.split_addr(listen_addr)
 
@@ -22,13 +22,12 @@ def serve_proxy(listen_addr: str, target_addr: str, base_delay_s: float, jitter_
         while True:
             client_conn, _ = server_sock.accept()
             with client_conn:
-                _handle_proxy_connection(client_conn, target_addr, base_delay_s, jitter_s, rng)
+                _handle_proxy_connection(client_conn, target_addr, jitter_s, rng)
 
 
 def _handle_proxy_connection(
     client_conn: socket.socket,
     target_addr: str,
-    base_delay_s: float,
     jitter_s: float,
     rng: random.Random,
 ) -> None:
@@ -44,7 +43,7 @@ def _handle_proxy_connection(
                 if not line:
                     return
 
-                _delay(rng, base_delay_s, jitter_s)
+                _delay(rng, jitter_s)
                 target_writer.write(line)
                 target_writer.flush()
 
@@ -52,7 +51,7 @@ def _handle_proxy_connection(
                 if not response:
                     return
 
-                _delay(rng, base_delay_s, jitter_s)
+                _delay(rng, jitter_s)
                 client_writer.write(response)
                 client_writer.flush()
         finally:
@@ -74,8 +73,8 @@ def _handle_proxy_connection(
                 pass
 
 
-def _delay(rng: random.Random, base_delay_s: float, jitter_s: float) -> None:
-    total = base_delay_s
+def _delay(rng: random.Random, jitter_s: float) -> None:
+    total = 0.0
     if jitter_s > 0:
         total += rng.uniform(-jitter_s, jitter_s)
         if total < 0:
