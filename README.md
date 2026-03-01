@@ -81,16 +81,6 @@ Recommended robust settings for sub-millisecond jitter:
 make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-samples 10 --top-k 12'
 ```
 
-Optional CPU pinning for `task4` roles:
-- `--attacker-cpu`
-- `--server-cpu`
-- `--proxy-cpu`
-
-Example:
-```bash
-make task4 ARGS='--trials 3 --jitters-ms 0,0.01,0.02 --attacker-cpu 1 --server-cpu 2 --proxy-cpu 3'
-```
-
 Output format example:
 ```text
 task4: timing-attack robustness under injected localhost noise

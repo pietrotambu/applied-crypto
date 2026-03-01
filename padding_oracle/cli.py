@@ -42,9 +42,6 @@ def main() -> None:
     p_task4.add_argument("--initial-samples", type=int, default=32)
     p_task4.add_argument("--refine-samples", type=int, default=128)
     p_task4.add_argument("--top-k", type=int, default=16)
-    p_task4.add_argument("--attacker-cpu", type=int, default=None)
-    p_task4.add_argument("--server-cpu", type=int, default=None)
-    p_task4.add_argument("--proxy-cpu", type=int, default=None)
 
     args = parser.parse_args()
 
@@ -149,7 +146,6 @@ def run_task3(args: argparse.Namespace) -> None:
 def run_task4(args: argparse.Namespace) -> None:
     if args.trials < 1:
         raise ValueError("trials must be >= 1")
-    process.set_current_process_affinity(args.attacker_cpu)
 
     jitters_ms = utils.parse_csv_floats(args.jitters_ms)
     _ = utils.ms_to_seconds(args.base_delay_ms)
@@ -170,8 +166,7 @@ def run_task4(args: argparse.Namespace) -> None:
             enc_key.hex(),
             "--mac-key",
             mac_key.hex(),
-        ],
-        cpu=args.server_cpu,
+        ]
     )
 
     try:
@@ -203,8 +198,7 @@ def run_task4(args: argparse.Namespace) -> None:
                     f"{jitter_ms}",
                     "--seed",
                     str(1337 + i),
-                ],
-                cpu=args.proxy_cpu,
+                ]
             )
 
             success = 0
