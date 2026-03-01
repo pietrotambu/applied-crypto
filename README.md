@@ -103,34 +103,13 @@ Interpretation:
 
 ## Timing Statistics Script
 
-Analyze `MacThenEncryptService.check()` timing breakdown over many retries (valid and tampered ciphertext):
+Analyze task4-style timing branch separation over many retries (through server + proxy):
 ```bash
-make timing-stats ARGS='--trials 10000 --warmup 500 --mode both'
+make timing-stats ARGS='--trials 10000 --warmup 500 --base-delay-ms 0 --jitter-ms 0.01'
 ```
 
-The report includes per-step:
-- minimum
-- average
-- maximum
-
-Values are printed only in milliseconds (`min_ms`, `avg_ms`, `max_ms`) for:
-- `decrypt_cbc_raw`
-- `pkcs7_unpad`
-- `hmac_sha256`
-- `compare_digest`
-- `total`
-
-To diagnose task4 failures under tiny jitter values over the full server+proxy path:
-```bash
-make timing-stability ARGS='--trials 20 --jitters-ms 0,0.01,0.02 --initial-samples 4 --refine-samples 8 --top-k 8'
-```
-
-The proxy uses high-resolution delay handling for tiny delays (spin-wait for very small intervals, sleep+spin for larger intervals) so sub-microsecond jitter experiments are not flattened by `sleep()` granularity.
-
-`timing-stability` now runs only the task4-like attack flow and prints:
-- `jitter_ms`
-- `success_rate`
-- `avg_queries`
-- `avg_elapsed_ms`
-- `completed_trials`
-- `error_trials`
+The report is intentionally simple and prints:
+- `long_journey`: padding valid, MAC computed (MAC-fail path)
+- `short_journey`: padding fails early, no MAC
+- `min_ms`, `avg_ms`, `max_ms` for each journey
+- `delta_avg_ms(long-short)` as the key signal

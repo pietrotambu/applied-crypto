@@ -4,15 +4,7 @@ import argparse
 import statistics
 from dataclasses import dataclass
 
-from . import crypto, services
-
-STEP_NAMES = (
-    "decrypt_cbc_raw_ns",
-    "pkcs7_unpad_ns",
-    "hmac_sha256_ns",
-    "compare_digest_ns",
-    "total_ns",
-)
+from . import crypto, process, protocol, utils
 
 
 @dataclass(frozen=True)
@@ -41,92 +33,144 @@ def _summarize(values: list[int]) -> Summary:
 
 
 def _collect_samples(
-    service: services.MacThenEncryptService,
+    client: protocol.Client,
     ciphertext: bytes,
     trials: int,
     warmup: int,
-) -> tuple[int, dict[str, list[int]]]:
-    rows: dict[str, list[int]] = {name: [] for name in STEP_NAMES}
+) -> tuple[int, list[int]]:
+    samples_ns: list[int] = []
     ok_count = 0
 
     for _ in range(warmup):
-        service.check_with_timing(ciphertext)
+        client.check(ciphertext)
 
     for _ in range(trials):
-        ok, timing = service.check_with_timing(ciphertext)
+        ok, delta_ns = client.check(ciphertext)
         if ok:
             ok_count += 1
-        data = timing.as_ns()
-        for name in STEP_NAMES:
-            rows[name].append(data[name])
-    return ok_count, rows
+        samples_ns.append(delta_ns)
+    return ok_count, samples_ns
 
 
-def _print_report(title: str, ok_count: int, trials: int, rows: dict[str, list[int]]) -> None:
-    print(title)
-    print(f"checks_ok={ok_count}/{trials}")
-    print("step count min_ms avg_ms max_ms")
-    for name in STEP_NAMES:
-        stats = _summarize(rows[name])
-        step_name = name[:-3] if name.endswith("_ns") else name
-        print(
-            f"{step_name} {stats.count} "
-            f"{stats.min_ms:.6f} {stats.avg_ms:.6f} {stats.max_ms:.6f}"
-        )
+def _tamper_mac(ciphertext: bytes) -> bytes:
+    # Flip one IV byte: padding stays valid but MAC should fail.
+    if len(ciphertext) < 2 * crypto.BLOCK_SIZE:
+        raise ValueError("ciphertext too short")
+    out = bytearray(ciphertext)
+    out[0] ^= 0x01
+    return bytes(out)
 
 
-def _tampered_ciphertext(ciphertext: bytes) -> bytes:
+def _tamper_padding(ciphertext: bytes) -> bytes:
     if len(ciphertext) < 2:
-        raise ValueError("ciphertext too short to tamper")
-    return ciphertext[:-1] + bytes([ciphertext[-1] ^ 0x01])
+        raise ValueError("ciphertext too short")
+    out = bytearray(ciphertext)
+    out[-1] ^= 0x01
+    return bytes(out)
+
+
+def _ensure_invalid_padding(client: protocol.Client, base_ct: bytes) -> bytes:
+    candidate = _tamper_padding(base_ct)
+    ok, _ = client.check(candidate)
+    if not ok:
+        return candidate
+
+    for mask in range(2, 256):
+        out = bytearray(base_ct)
+        out[-1] ^= mask
+        ok, _ = client.check(bytes(out))
+        if not ok:
+            return bytes(out)
+    raise RuntimeError("failed to produce invalid-padding sample")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="padding-oracle-timing-stats",
-        description="Analyze check() timing breakdown statistics over many retries.",
+        description="Compare task4 long path vs short path timings.",
     )
-    parser.add_argument("--trials", type=int, default=5000, help="number of measured check() calls")
-    parser.add_argument("--warmup", type=int, default=200, help="unreported warmup check() calls")
+    parser.add_argument("--trials", type=int, default=10000, help="measured checks per path")
+    parser.add_argument("--warmup", type=int, default=200, help="unreported warmup checks per path")
     parser.add_argument("--message", default="timing-stats-message", help="plaintext used for encrypted sample")
-    parser.add_argument(
-        "--mode",
-        choices=("valid", "invalid", "both"),
-        default="both",
-        help="whether to measure valid, tampered-invalid, or both ciphertext paths",
-    )
+    parser.add_argument("--base-delay-ms", type=float, default=0.0, help="proxy base delay")
+    parser.add_argument("--jitter-ms", type=float, default=0.0, help="proxy jitter")
     args = parser.parse_args()
 
     if args.trials < 1:
         raise ValueError("trials must be >= 1")
     if args.warmup < 0:
         raise ValueError("warmup must be >= 0")
+    _ = utils.ms_to_seconds(args.base_delay_ms)
+    _ = utils.ms_to_seconds(args.jitter_ms)
 
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
-    service = services.MacThenEncryptService(enc_key, mac_key)
-    ciphertext = service.encrypt(args.message.encode("utf-8"))
-    bad_ciphertext = _tampered_ciphertext(ciphertext)
+    msg = args.message.encode("utf-8")
 
-    if args.mode in ("valid", "both"):
-        ok_count, rows = _collect_samples(service, ciphertext, args.trials, args.warmup)
-        _print_report(
-            title=f"valid ciphertext timing stats (trials={args.trials}, warmup={args.warmup})",
-            ok_count=ok_count,
-            trials=args.trials,
-            rows=rows,
-        )
-        if args.mode == "both":
-            print("")
+    server_addr = process.free_local_addr()
+    server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
 
-    if args.mode in ("invalid", "both"):
-        ok_count, rows = _collect_samples(service, bad_ciphertext, args.trials, args.warmup)
-        _print_report(
-            title=f"tampered ciphertext timing stats (trials={args.trials}, warmup={args.warmup})",
-            ok_count=ok_count,
-            trials=args.trials,
-            rows=rows,
+    proxy_addr = process.free_local_addr()
+    proxy_proc = process.start_self_process(
+        utils.proxy_command_args(
+            listen_addr=proxy_addr,
+            target_addr=server_addr,
+            base_delay_ms=args.base_delay_ms,
+            jitter_ms=args.jitter_ms,
         )
+    )
+
+    try:
+        process.wait_for_tcp(server_addr, timeout=3.0)
+        process.wait_for_tcp(proxy_addr, timeout=3.0)
+
+        with protocol.Client(proxy_addr, timeout=2.0) as client:
+            ciphertext = client.encrypt(msg)
+            long_path_ct = _tamper_mac(ciphertext)
+            short_path_ct = _ensure_invalid_padding(client, ciphertext)
+
+            ok_long, _ = client.check(long_path_ct)
+            ok_short, _ = client.check(short_path_ct)
+            if ok_long:
+                raise RuntimeError("long-path sample unexpectedly valid")
+            if ok_short:
+                raise RuntimeError("short-path sample unexpectedly valid")
+
+            long_ok, long_samples = _collect_samples(
+                client=client,
+                ciphertext=long_path_ct,
+                trials=args.trials,
+                warmup=args.warmup,
+            )
+            short_ok, short_samples = _collect_samples(
+                client=client,
+                ciphertext=short_path_ct,
+                trials=args.trials,
+                warmup=args.warmup,
+            )
+
+        long_stats = _summarize(long_samples)
+        short_stats = _summarize(short_samples)
+        delta_avg_ms = long_stats.avg_ms - short_stats.avg_ms
+
+        print(
+            "flow4 path timing stats "
+            f"(trials={args.trials}, warmup={args.warmup}, "
+            f"base_delay_ms={args.base_delay_ms:.6f}, jitter_ms={args.jitter_ms:.6f})"
+        )
+        print("path checks_ok min_ms avg_ms max_ms")
+        print(
+            f"long_journey {long_ok}/{args.trials} "
+            f"{long_stats.min_ms:.6f} {long_stats.avg_ms:.6f} {long_stats.max_ms:.6f}"
+        )
+        print(
+            f"short_journey {short_ok}/{args.trials} "
+            f"{short_stats.min_ms:.6f} {short_stats.avg_ms:.6f} {short_stats.max_ms:.6f}"
+        )
+        print(f"delta_avg_ms(long-short) {delta_avg_ms:.6f}")
+    finally:
+        process.stop_process(proxy_proc)
+        process.stop_process(server_proc)
 
 
 if __name__ == "__main__":

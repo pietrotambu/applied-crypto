@@ -1,7 +1,20 @@
 import unittest
 
-from padding_oracle import crypto, services
-from padding_oracle.timing_stats import _collect_samples, _summarize, _tampered_ciphertext
+from padding_oracle import crypto
+from padding_oracle.timing_stats import _collect_samples, _summarize, _tamper_mac, _tamper_padding
+
+
+class _FakeClient:
+    def __init__(self, responses: list[tuple[bool, int]]):
+        self._responses = list(responses)
+        self._i = 0
+
+    def check(self, _ciphertext: bytes) -> tuple[bool, int]:
+        if self._i >= len(self._responses):
+            return self._responses[-1]
+        response = self._responses[self._i]
+        self._i += 1
+        return response
 
 
 class TimingStatsTests(unittest.TestCase):
@@ -12,25 +25,27 @@ class TimingStatsTests(unittest.TestCase):
         self.assertEqual(summary.avg_ms, 2.0)
         self.assertEqual(summary.max_ms, 3.0)
 
-    def test_collect_samples_valid(self) -> None:
-        enc_key = crypto.random_bytes(32)
-        mac_key = crypto.random_bytes(32)
-        service = services.MacThenEncryptService(enc_key, mac_key)
-        ciphertext = service.encrypt(b"timing stats")
+    def test_collect_samples_counts_after_warmup(self) -> None:
+        client = _FakeClient(
+            responses=[
+                (False, 10),  # warmup
+                (True, 20),
+                (False, 30),
+                (True, 40),
+            ]
+        )
+        ok_count, samples = _collect_samples(client, b"ct", trials=3, warmup=1)
+        self.assertEqual(ok_count, 2)
+        self.assertEqual(samples, [20, 30, 40])
 
-        ok_count, rows = _collect_samples(service, ciphertext, trials=5, warmup=1)
-        self.assertEqual(ok_count, 5)
-        self.assertEqual(len(rows["total_ns"]), 5)
-        self.assertTrue(all(v >= 0 for v in rows["total_ns"]))
-
-    def test_tampered_ciphertext_changes_bytes(self) -> None:
-        enc_key = crypto.random_bytes(32)
-        mac_key = crypto.random_bytes(32)
-        service = services.MacThenEncryptService(enc_key, mac_key)
-        ciphertext = service.encrypt(b"x")
-        tampered = _tampered_ciphertext(ciphertext)
-        self.assertNotEqual(tampered, ciphertext)
-        self.assertEqual(len(tampered), len(ciphertext))
+    def test_tamper_helpers_change_bytes(self) -> None:
+        ciphertext = crypto.random_bytes(2 * crypto.BLOCK_SIZE)
+        mac_tampered = _tamper_mac(ciphertext)
+        pad_tampered = _tamper_padding(ciphertext)
+        self.assertNotEqual(mac_tampered, ciphertext)
+        self.assertNotEqual(pad_tampered, ciphertext)
+        self.assertEqual(len(mac_tampered), len(ciphertext))
+        self.assertEqual(len(pad_tampered), len(ciphertext))
 
 
 if __name__ == "__main__":
