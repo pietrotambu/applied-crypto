@@ -32,11 +32,9 @@ def _handle_connection(conn: socket.socket, service: Service) -> None:
     try:
         while True:
             line = reader.readline()
-            if not line:
-                return
+            if not line: return
             line = line.strip()
-            if not line:
-                continue
+            if not line: continue
 
             parts = line.split(maxsplit=1)
             if len(parts) != 2:
@@ -62,7 +60,6 @@ def _handle_connection(conn: socket.socket, service: Service) -> None:
                 continue
 
             if cmd.upper() == b"CHECK":
-                ok = False
                 try:
                     ok = service.check(payload)
                 except Exception:
@@ -115,10 +112,17 @@ class Client:
         return base64.b64decode(line[3:], validate=True)
 
     def check(self, ciphertext: bytes) -> tuple[bool, int]:
+        send_message: bytes = b"CHECK " + base64.b64encode(ciphertext)
+
         start = time.perf_counter_ns()
-        self._send_line(b"CHECK " + base64.b64encode(ciphertext))
+        self._send_line(send_message)
         line = self._recv_line()
-        delta_ns = time.perf_counter_ns() - start
+        end = time.perf_counter_ns()
+
+        delta_ns = end - start
+
+        if not line:
+            raise ConnectionError("connection closed")
         if line == b"OK":
             return True, delta_ns
         if line == b"ERR":
@@ -130,7 +134,4 @@ class Client:
         self._writer.flush()
 
     def _recv_line(self) -> bytes:
-        line = self._reader.readline()
-        if not line:
-            raise ConnectionError("connection closed")
-        return line.strip()
+        return self._reader.readline().strip()
