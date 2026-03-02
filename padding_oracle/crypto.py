@@ -10,7 +10,6 @@ BLOCK_SIZE = 16
 class InvalidPaddingError(ValueError):
     pass
 
-
 class InvalidCiphertextError(ValueError):
     pass
 

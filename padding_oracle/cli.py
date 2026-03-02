@@ -15,6 +15,7 @@ def main() -> None:
     p_server.add_argument("--addr", default="127.0.0.1:4000")
     p_server.add_argument("--enc-key", required=True, help="hex AES key")
     p_server.add_argument("--mac-key", required=True, help="hex HMAC key")
+    p_server.add_argument("--timing-work-factor", type=int, default=0)
 
     p_proxy = sub.add_parser("proxy", help="run localhost delay/jitter proxy")
     p_proxy.add_argument("--listen", required=True)
@@ -30,6 +31,7 @@ def main() -> None:
     p_task3.add_argument("--initial-samples", type=int, default=4)
     p_task3.add_argument("--refine-samples", type=int, default=8)
     p_task3.add_argument("--top-k", type=int, default=8)
+    p_task3.add_argument("--timing-work-factor", type=int, default=0)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
     p_task4.add_argument("--message", default="0123456789abcdef")
@@ -39,27 +41,26 @@ def main() -> None:
     p_task4.add_argument("--initial-samples", type=int, default=4)
     p_task4.add_argument("--refine-samples", type=int, default=8)
     p_task4.add_argument("--top-k", type=int, default=8)
+    p_task4.add_argument("--timing-work-factor", type=int, default=0)
 
     args = parser.parse_args()
 
-    if args.command == "server":
-        run_server(args)
-    elif args.command == "proxy":
-        run_proxy(args)
-    elif args.command == "task2":
-        run_task2(args)
-    elif args.command == "task3":
-        run_task3(args)
-    elif args.command == "task4":
-        run_task4(args)
-    else:
-        raise ValueError(f"unknown command: {args.command}")
+    if args.command == "server": run_server(args)
+    elif args.command == "proxy": run_proxy(args)
+    elif args.command == "task2": run_task2(args)
+    elif args.command == "task3": run_task3(args)
+    elif args.command == "task4": run_task4(args)
+    else: raise ValueError(f"unknown command: {args.command}")
 
 
 def run_server(args: argparse.Namespace) -> None:
     enc_key = utils.parse_hex_aes_key(args.enc_key)
     mac_key = utils.parse_hex_mac_key(args.mac_key)
-    service = services.MacThenEncryptService(enc_key, mac_key)
+    service = services.MacThenEncryptService(
+        enc_key,
+        mac_key,
+        timing_work_factor=args.timing_work_factor,
+    )
     protocol.serve(args.addr, service)
 
 
@@ -91,7 +92,14 @@ def run_task3(args: argparse.Namespace) -> None:
     msg = args.message.encode("utf-8")
 
     server_addr = process.free_local_addr()
-    server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
+    server_proc = process.start_self_process(
+        utils.server_command_args(
+            server_addr,
+            enc_key,
+            mac_key,
+            timing_work_factor=args.timing_work_factor,
+        )
+    )
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
@@ -118,6 +126,7 @@ def run_task3(args: argparse.Namespace) -> None:
 
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
+            print(f"timing_work_factor: {args.timing_work_factor}")
             print(f"target_block: {args.block_index}")
             print(f"queries: {queries}")
             print(f"elapsed_ms: {elapsed_ms:.2f}")
@@ -142,7 +151,14 @@ def run_task4(args: argparse.Namespace) -> None:
     msg = args.message.encode("utf-8")
 
     server_addr = process.free_local_addr()
-    server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
+    server_proc = process.start_self_process(
+        utils.server_command_args(
+            server_addr,
+            enc_key,
+            mac_key,
+            timing_work_factor=args.timing_work_factor,
+        )
+    )
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
@@ -155,7 +171,10 @@ def run_task4(args: argparse.Namespace) -> None:
         )
 
         print("task4: timing-attack robustness under injected localhost noise")
-        print(f"server={server_addr} trials={args.trials}")
+        print(
+            f"server={server_addr} trials={args.trials} "
+            f"timing_work_factor={args.timing_work_factor}"
+        )
         print("jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials")
 
         for jitter_ms in jitters_ms:

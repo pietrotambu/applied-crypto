@@ -1,7 +1,5 @@
-from __future__ import annotations
-
-import hashlib
 import hmac
+import hashlib
 
 from . import crypto
 
@@ -50,11 +48,7 @@ def ms_to_seconds(value: float) -> float:
     return value / 1000.0
 
 
-def proxy_command_args(
-    listen_addr: str,
-    target_addr: str,
-    jitter_ms: float,
-) -> list[str]:
+def proxy_command_args(listen_addr: str, target_addr: str, jitter_ms: float) -> list[str]:
     return [
         "proxy",
         "--listen",
@@ -66,8 +60,13 @@ def proxy_command_args(
     ]
 
 
-def server_command_args(addr: str, enc_key: bytes, mac_key: bytes) -> list[str]:
-    return [
+def server_command_args(
+    addr: str,
+    enc_key: bytes,
+    mac_key: bytes,
+    timing_work_factor: int = 0,
+) -> list[str]:
+    args = [
         "server",
         "--addr",
         addr,
@@ -76,6 +75,10 @@ def server_command_args(addr: str, enc_key: bytes, mac_key: bytes) -> list[str]:
         "--mac-key",
         mac_key.hex(),
     ]
+    factor = max(1, int(timing_work_factor))
+    if factor != 1:
+        args.extend(["--timing-work-factor", str(factor)])
+    return args
 
 
 def expected_payload_block(msg: bytes, mac_key: bytes, block_index: int) -> bytes:
@@ -85,4 +88,4 @@ def expected_payload_block(msg: bytes, mac_key: bytes, block_index: int) -> byte
     if block_index < 1 or block_index > blocks:
         raise ValueError(f"block index {block_index} out of range [1,{blocks}]")
     start = (block_index - 1) * crypto.BLOCK_SIZE
-    return payload[start : start + crypto.BLOCK_SIZE]
+    return payload[start: start + crypto.BLOCK_SIZE]

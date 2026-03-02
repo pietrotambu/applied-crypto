@@ -1,9 +1,7 @@
-from __future__ import annotations
-
-import socket
-import subprocess
 import sys
 import time
+import socket
+import subprocess
 from pathlib import Path
 
 

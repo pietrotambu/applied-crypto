@@ -6,8 +6,8 @@ import time
 
 from . import utils
 
-_SLEEP_COARSE_NS = 200_000
 _SPIN_GUARD_NS = 50_000
+_SLEEP_COARSE_NS = 200_000
 
 
 def serve_proxy(listen_addr: str, target_addr: str, jitter_s: float) -> None:
