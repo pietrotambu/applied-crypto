@@ -7,7 +7,7 @@ import time
 from . import utils
 
 _SPIN_GUARD_NS = 50_000
-_SLEEP_COARSE_NS = 200_000
+_SLEEP_COARSE_NS = 2_000_000 # 2 ms
 
 
 def serve_proxy(listen_addr: str, target_addr: str, jitter_s: float) -> None:
@@ -74,30 +74,28 @@ def _handle_proxy_connection(
 
 
 def _delay(rng: random.Random, jitter_s: float) -> None:
-    total = 0.0
-    if jitter_s > 0:
-        total += rng.uniform(-jitter_s, jitter_s)
-        if total < 0:
-            total = 0.0
-    if total > 0:
-        _sleep_precise(total)
+    if jitter_s <= 0: return
+
+    total = rng.uniform(0.0, jitter_s)
+    _sleep_precise(total)
 
 
 def _sleep_precise(total_s: float) -> None:
-    # Use busy-wait for tiny delays so sub-microsecond jitter is not rounded away
-    # by scheduler-backed sleep resolution. For larger delays, sleep most of the
-    # interval and finish with a short spin.
+    # Sleep most of the interval using the OS scheduler, then busy-spin the final
+    # few microseconds to improve precision. The loop re-checks the remaining time
+    # to compensate for scheduler jitter or early wakeups.
     total_ns = int(total_s * 1_000_000_000)
-    if total_ns <= 0:
-        return
+    if total_ns <= 0: return
 
-    start_ns = time.perf_counter_ns()
-    deadline_ns = start_ns + total_ns
+    deadline_ns = time.perf_counter_ns() + total_ns
 
     if total_ns >= _SLEEP_COARSE_NS:
-        sleep_ns = total_ns - _SPIN_GUARD_NS
-        if sleep_ns > 0:
-            time.sleep(sleep_ns / 1_000_000_000.0)
+        while True:
+            now_ns = time.perf_counter_ns()
+            remaining_ns = deadline_ns - now_ns
+            if remaining_ns <= _SPIN_GUARD_NS:
+                break
+            time.sleep((remaining_ns - _SPIN_GUARD_NS) / 1_000_000_000.0)
 
     while time.perf_counter_ns() < deadline_ns:
         pass
