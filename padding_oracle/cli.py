@@ -175,7 +175,10 @@ def run_task4(args: argparse.Namespace) -> None:
             f"server={server_addr} trials={args.trials} "
             f"timing_work_factor={args.timing_work_factor}"
         )
-        print("jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials")
+        print(
+            "jitter_ms success_rate avg_queries avg_elapsed_ms "
+            "completed_trials error_trials successes total_trials"
+        )
 
         for jitter_ms in jitters_ms:
             proxy_addr = process.free_local_addr()
@@ -237,8 +240,8 @@ def run_task4(args: argparse.Namespace) -> None:
                 avg_queries = float("nan")
                 avg_elapsed_ms = float("nan")
             print(
-                f"{jitter_ms:.6f} {success_rate:.2f} {avg_queries:.1f} {avg_elapsed_ms:.2f} "
-                f"{completed_trials} {error_trials}"
+                f"{jitter_ms:.6f} {success_rate:.5f} {avg_queries:.1f} {avg_elapsed_ms:.2f} "
+                f"{completed_trials} {error_trials} {success} {args.trials}"
             )
             if error_trials > 0:
                 print(
