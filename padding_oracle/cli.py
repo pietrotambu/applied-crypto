@@ -103,6 +103,8 @@ def run_task3(args: argparse.Namespace) -> None:
         process.wait_for_tcp(server_addr, timeout=3.0)
         with protocol.Client(server_addr, timeout=2.0) as client:
             ciphertext = client.encrypt(msg)
+            num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+            last_block_index = num_blocks - 1
 
             def oracle(candidate: bytes) -> int:
                 _, delta_ns = client.check(candidate)
@@ -115,21 +117,22 @@ def run_task3(args: argparse.Namespace) -> None:
             )
 
             start = time.perf_counter_ns()
-            recovered, queries = attacks.recover_plaintext_timing(
+            recovered, queries = attacks.recover_ciphertext_block_timing(
                 ciphertext,
+                last_block_index,
                 oracle,
                 cfg,
             )
             elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
-            expected = utils.expected_payload_padded(msg, mac_key)
+            expected = utils.expected_payload_block(msg, mac_key, last_block_index)
 
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
             print(f"timing_work_factor: {args.timing_work_factor}")
             print(f"message_kb: {args.message_kb}")
             print(f"message_bytes: {len(msg)}")
-            print("target: full_payload (reverse)")
+            print(f"target: last_payload_block (block_index={last_block_index})")
             print(f"queries: {queries}")
             print(f"elapsed_ms: {elapsed_ms:.2f}")
             print(f"recovered_hex: {recovered.hex()}")
@@ -174,7 +177,7 @@ def run_task4(args: argparse.Namespace) -> None:
             f"timing_work_factor={args.timing_work_factor}"
         )
         print(f"message_kb: {args.message_kb}")
-        print("mode=full_payload block_order=reverse")
+        print("mode=single_block target=last_payload_block")
         print(
             "jitter_ms success_rate avg_queries avg_elapsed_ms "
             "completed_trials error_trials successes total_trials"
@@ -208,16 +211,19 @@ def run_task4(args: argparse.Namespace) -> None:
                         try:
                             with protocol.Client(proxy_addr, timeout=2.0) as client:
                                 msg = utils.random_message_from_kb(args.message_kb)
-                                expected = utils.expected_payload_padded(msg, mac_key)
                                 ciphertext = client.encrypt(msg)
+                                num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+                                last_block_index = num_blocks - 1
+                                expected = utils.expected_payload_block(msg, mac_key, last_block_index)
 
                                 def oracle(candidate: bytes) -> int:
                                     _, delta_ns = client.check(candidate)
                                     return delta_ns
 
                                 start = time.perf_counter_ns()
-                                recovered, queries = attacks.recover_plaintext_timing(
+                                recovered, queries = attacks.recover_ciphertext_block_timing(
                                     ciphertext,
+                                    last_block_index,
                                     oracle,
                                     cfg,
                                 )

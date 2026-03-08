@@ -100,7 +100,7 @@ jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials 
 ```
 
 Interpretation:
-- `success_rate`: fraction of successful full-payload recoveries over all requested trials.
+- `success_rate`: fraction of successful last-block recoveries over all requested trials.
 - `message-kb`: each trial uses a fresh random alphanumeric plaintext of this size.
 - `avg_queries`: average oracle calls over completed trials (prints `nan` if none completed).
 - `avg_elapsed_ms`: average wall-clock attack time over completed trials (prints `nan` if none completed).
@@ -118,5 +118,6 @@ make timing-stats ARGS='--trials 10000 --warmup 500 --jitter-ms 0.01 --message-k
 The report is intentionally simple and prints:
 - `long_journey`: padding valid, MAC computed (MAC-fail path)
 - `short_journey`: padding fails early, no MAC
+- samples are constructed by tampering the block before the last ciphertext block (last-block attack shape)
 - `min_ms`, `avg_ms`, `max_ms` for each journey
 - `delta_avg_ms(long-short)` as the key signal
