@@ -88,7 +88,7 @@ def main() -> None:
     )
     parser.add_argument("--trials", type=int, default=10000, help="measured checks per path")
     parser.add_argument("--warmup", type=int, default=200, help="unreported warmup checks per path")
-    parser.add_argument("--message", default="timing-stats-message", help="plaintext used for encrypted sample")
+    parser.add_argument("--message-kb", type=float, default=1.0, help="random plaintext size in KB")
     parser.add_argument("--jitter-ms", type=float, default=0.0, help="proxy jitter")
     args = parser.parse_args()
 
@@ -97,10 +97,11 @@ def main() -> None:
     if args.warmup < 0:
         raise ValueError("warmup must be >= 0")
     _ = utils.ms_to_seconds(args.jitter_ms)
+    _ = utils.kb_to_bytes(args.message_kb)
 
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
-    msg = args.message.encode("utf-8")
+    msg = utils.random_message_from_kb(args.message_kb)
 
     server_addr = process.free_local_addr()
     server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
@@ -150,7 +151,7 @@ def main() -> None:
         print(
             "flow4 path timing stats "
             f"(trials={args.trials}, warmup={args.warmup}, "
-            f"jitter_ms={args.jitter_ms:.6f})"
+            f"jitter_ms={args.jitter_ms:.6f}, message_kb={args.message_kb})"
         )
         print("path min_ms avg_ms max_ms")
         print(

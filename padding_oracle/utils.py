@@ -1,5 +1,7 @@
 import hmac
 import hashlib
+import secrets
+import string
 
 from . import crypto
 
@@ -48,6 +50,22 @@ def ms_to_seconds(value: float) -> float:
     return value / 1000.0
 
 
+def kb_to_bytes(value_kb: float) -> int:
+    if value_kb <= 0:
+        raise ValueError("message size must be > 0 KB")
+    out = int(value_kb * 1024)
+    if out < 1:
+        raise ValueError("message size too small")
+    return out
+
+
+def random_message_from_kb(value_kb: float) -> bytes:
+    size_bytes = kb_to_bytes(value_kb)
+    alphabet = string.ascii_letters + string.digits
+    out = "".join(secrets.choice(alphabet) for _ in range(size_bytes))
+    return out.encode("ascii")
+
+
 def proxy_command_args(listen_addr: str, target_addr: str, jitter_ms: float) -> list[str]:
     return [
         "proxy",
@@ -81,9 +99,13 @@ def server_command_args(
     return args
 
 
-def expected_payload_block(msg: bytes, mac_key: bytes, block_index: int) -> bytes:
+def expected_payload_padded(msg: bytes, mac_key: bytes) -> bytes:
     tag = hmac.new(mac_key, msg, hashlib.sha256).digest()
-    payload = crypto.pkcs7_pad(msg + tag, crypto.BLOCK_SIZE)
+    return crypto.pkcs7_pad(msg + tag, crypto.BLOCK_SIZE)
+
+
+def expected_payload_block(msg: bytes, mac_key: bytes, block_index: int) -> bytes:
+    payload = expected_payload_padded(msg, mac_key)
     blocks = len(payload) // crypto.BLOCK_SIZE
     if block_index < 1 or block_index > blocks:
         raise ValueError(f"block index {block_index} out of range [1,{blocks}]")

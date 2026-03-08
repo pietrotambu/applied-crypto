@@ -45,6 +45,11 @@ Run task 3 demo (spawns localhost server process automatically):
 make task3
 ```
 
+Run task 3 with random 4 KB plaintext:
+```bash
+make task3 ARGS='--message-kb 4'
+```
+
 Run a fully custom CLI command:
 ```bash
 make run COMMAND='task4 --trials 3 --jitters-ms 0,0.01,0.02'
@@ -73,12 +78,12 @@ Interpretation:
 
 Run task 4 benchmark with configurable jitter levels (milliseconds, decimals allowed):
 ```bash
-make task4 ARGS='--trials 3 --jitters-ms 1,2,3,4'
+make task4 ARGS='--trials 3 --jitters-ms 1,2,3,4 --message-kb 1'
 ```
 
 Recommended robust settings for sub-millisecond jitter:
 ```bash
-make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-samples 10 --top-k 12'
+make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-samples 10 --top-k 12 --message-kb 1'
 ```
 
 Output format example:
@@ -95,7 +100,8 @@ jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials 
 ```
 
 Interpretation:
-- `success_rate`: fraction of successful plaintext block recoveries over all requested trials.
+- `success_rate`: fraction of successful full-payload recoveries over all requested trials.
+- `message-kb`: each trial uses a fresh random alphanumeric plaintext of this size.
 - `avg_queries`: average oracle calls over completed trials (prints `nan` if none completed).
 - `avg_elapsed_ms`: average wall-clock attack time over completed trials (prints `nan` if none completed).
 - `completed_trials` and `error_trials`: help distinguish attack failures from runtime/proxy errors.
@@ -106,7 +112,7 @@ Interpretation:
 
 Analyze task4-style timing branch separation over many retries (through server + proxy):
 ```bash
-make timing-stats ARGS='--trials 10000 --warmup 500 --jitter-ms 0.01'
+make timing-stats ARGS='--trials 10000 --warmup 500 --jitter-ms 0.01 --message-kb 1'
 ```
 
 The report is intentionally simple and prints:

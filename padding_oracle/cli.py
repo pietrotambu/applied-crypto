@@ -26,16 +26,14 @@ def main() -> None:
     p_task2.add_argument("--message", default="CBC padding oracle demo for task 2.")
 
     p_task3 = sub.add_parser("task3", help="timing-oracle attack over localhost processes")
-    p_task3.add_argument("--message", default="0123456789abcdef")
-    p_task3.add_argument("--block-index", type=int, default=1)
+    p_task3.add_argument("--message-kb", type=float, default=1.0)
     p_task3.add_argument("--initial-samples", type=int, default=4)
     p_task3.add_argument("--refine-samples", type=int, default=8)
     p_task3.add_argument("--top-k", type=int, default=8)
     p_task3.add_argument("--timing-work-factor", type=int, default=0)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
-    p_task4.add_argument("--message", default="0123456789abcdef")
-    p_task4.add_argument("--block-index", type=int, default=1)
+    p_task4.add_argument("--message-kb", type=float, default=1.0)
     p_task4.add_argument("--trials", type=int, default=3)
     p_task4.add_argument("--jitters-ms", default="0,0.005,0.01,0.015")
     p_task4.add_argument("--initial-samples", type=int, default=4)
@@ -89,7 +87,7 @@ def run_task2(args: argparse.Namespace) -> None:
 def run_task3(args: argparse.Namespace) -> None:
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
-    msg = args.message.encode("utf-8")
+    msg = utils.random_message_from_kb(args.message_kb)
 
     server_addr = process.free_local_addr()
     server_proc = process.start_self_process(
@@ -117,17 +115,21 @@ def run_task3(args: argparse.Namespace) -> None:
             )
 
             start = time.perf_counter_ns()
-            recovered, queries = attacks.recover_ciphertext_block_timing(
-                ciphertext, args.block_index, oracle, cfg
+            recovered, queries = attacks.recover_plaintext_timing(
+                ciphertext,
+                oracle,
+                cfg,
             )
             elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
-            expected = utils.expected_payload_block(msg, mac_key, args.block_index)
+            expected = utils.expected_payload_padded(msg, mac_key)
 
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
             print(f"timing_work_factor: {args.timing_work_factor}")
-            print(f"target_block: {args.block_index}")
+            print(f"message_kb: {args.message_kb}")
+            print(f"message_bytes: {len(msg)}")
+            print("target: full_payload (reverse)")
             print(f"queries: {queries}")
             print(f"elapsed_ms: {elapsed_ms:.2f}")
             print(f"recovered_hex: {recovered.hex()}")
@@ -148,8 +150,6 @@ def run_task4(args: argparse.Namespace) -> None:
 
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
-    msg = args.message.encode("utf-8")
-
     server_addr = process.free_local_addr()
     server_proc = process.start_self_process(
         utils.server_command_args(
@@ -162,8 +162,6 @@ def run_task4(args: argparse.Namespace) -> None:
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
-        expected = utils.expected_payload_block(msg, mac_key, args.block_index)
-
         cfg = attacks.TimingConfig(
             initial_samples=args.initial_samples,
             refine_samples=args.refine_samples,
@@ -175,6 +173,8 @@ def run_task4(args: argparse.Namespace) -> None:
             f"server={server_addr} trials={args.trials} "
             f"timing_work_factor={args.timing_work_factor}"
         )
+        print(f"message_kb: {args.message_kb}")
+        print("mode=full_payload block_order=reverse")
         print(
             "jitter_ms success_rate avg_queries avg_elapsed_ms "
             "completed_trials error_trials successes total_trials"
@@ -207,6 +207,8 @@ def run_task4(args: argparse.Namespace) -> None:
                     for _ in range(args.trials):
                         try:
                             with protocol.Client(proxy_addr, timeout=2.0) as client:
+                                msg = utils.random_message_from_kb(args.message_kb)
+                                expected = utils.expected_payload_padded(msg, mac_key)
                                 ciphertext = client.encrypt(msg)
 
                                 def oracle(candidate: bytes) -> int:
@@ -214,9 +216,8 @@ def run_task4(args: argparse.Namespace) -> None:
                                     return delta_ns
 
                                 start = time.perf_counter_ns()
-                                recovered, queries = attacks.recover_ciphertext_block_timing(
+                                recovered, queries = attacks.recover_plaintext_timing(
                                     ciphertext,
-                                    args.block_index,
                                     oracle,
                                     cfg,
                                 )
