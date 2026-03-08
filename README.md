@@ -107,6 +107,7 @@ jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials 
 Interpretation:
 - `success_rate`: fraction of successful last-block recoveries over all requested trials.
 - `message-kb`: each trial uses a fresh random alphanumeric plaintext of this size.
+- task4 reuses one message across all trials and all jitter rows for apples-to-apples comparison.
 - `avg_queries`: average oracle calls over completed trials (prints `nan` if none completed).
 - `avg_elapsed_ms`: average wall-clock attack time over completed trials (prints `nan` if none completed).
 - `completed_trials` and `error_trials`: help distinguish attack failures from runtime/proxy errors.

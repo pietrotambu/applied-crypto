@@ -178,6 +178,11 @@ def run_task4(args: argparse.Namespace) -> None:
         message_kb = 1.0 if args.message_kb is None else args.message_kb
         _ = utils.kb_to_bytes(message_kb)
 
+    if fixed_message is not None:
+        base_message = fixed_message
+    else:
+        base_message = utils.random_message_from_kb(message_kb)
+
     server_addr = process.free_local_addr()
     server_proc = process.start_self_process(
         utils.server_command_args(
@@ -205,7 +210,6 @@ def run_task4(args: argparse.Namespace) -> None:
             print(f"message_mode=literal message_bytes={len(fixed_message)}")
         else:
             print(f"message_mode=random message_kb={message_kb}")
-        print("mode=single_block target=last_payload_block")
         print(
             "jitter_ms success_rate avg_queries avg_elapsed_ms "
             "completed_trials error_trials successes total_trials"
@@ -238,10 +242,7 @@ def run_task4(args: argparse.Namespace) -> None:
                     for _ in range(args.trials):
                         try:
                             with protocol.Client(proxy_addr, timeout=2.0) as client:
-                                if fixed_message is not None:
-                                    msg = fixed_message
-                                else:
-                                    msg = utils.random_message_from_kb(message_kb)
+                                msg = base_message
                                 ciphertext = client.encrypt(msg)
                                 num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
                                 last_block_index = num_blocks - 1
