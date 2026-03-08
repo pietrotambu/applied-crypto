@@ -1,9 +1,7 @@
-import hmac
-import hashlib
 import secrets
 import string
 
-from . import crypto
+from . import crypto, services
 
 
 def split_addr(addr: str) -> tuple[str, int]:
@@ -83,6 +81,8 @@ def server_command_args(
     enc_key: bytes,
     mac_key: bytes,
     timing_work_factor: int = 0,
+    mac_alg: str = "sha256",
+    mac_tag_bytes: int = 32,
 ) -> list[str]:
     args = [
         "server",
@@ -96,16 +96,31 @@ def server_command_args(
     factor = max(1, int(timing_work_factor))
     if factor != 1:
         args.extend(["--timing-work-factor", str(factor)])
+    if mac_alg != "sha256":
+        args.extend(["--mac-alg", mac_alg])
+    if int(mac_tag_bytes) != 32:
+        args.extend(["--mac-tag-bytes", str(int(mac_tag_bytes))])
     return args
 
 
-def expected_payload_padded(msg: bytes, mac_key: bytes) -> bytes:
-    tag = hmac.new(mac_key, msg, hashlib.sha256).digest()
+def expected_payload_padded(
+    msg: bytes,
+    mac_key: bytes,
+    mac_alg: str = "sha256",
+    mac_tag_bytes: int = 32,
+) -> bytes:
+    tag = services.compute_mac_tag(mac_alg, mac_key, msg, mac_tag_bytes)
     return crypto.pkcs7_pad(msg + tag, crypto.BLOCK_SIZE)
 
 
-def expected_payload_block(msg: bytes, mac_key: bytes, block_index: int) -> bytes:
-    payload = expected_payload_padded(msg, mac_key)
+def expected_payload_block(
+    msg: bytes,
+    mac_key: bytes,
+    block_index: int,
+    mac_alg: str = "sha256",
+    mac_tag_bytes: int = 32,
+) -> bytes:
+    payload = expected_payload_padded(msg, mac_key, mac_alg=mac_alg, mac_tag_bytes=mac_tag_bytes)
     blocks = len(payload) // crypto.BLOCK_SIZE
     if block_index < 1 or block_index > blocks:
         raise ValueError(f"block index {block_index} out of range [1,{blocks}]")

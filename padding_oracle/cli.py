@@ -15,6 +15,8 @@ def main() -> None:
     p_server.add_argument("--addr", default="127.0.0.1:4000")
     p_server.add_argument("--enc-key", required=True, help="hex AES key")
     p_server.add_argument("--mac-key", required=True, help="hex HMAC key")
+    p_server.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
+    p_server.add_argument("--mac-tag-bytes", type=int, default=32)
     p_server.add_argument("--timing-work-factor", type=int, default=0)
 
     p_proxy = sub.add_parser("proxy", help="run localhost delay/jitter proxy")
@@ -31,6 +33,8 @@ def main() -> None:
     p_task3.add_argument("--initial-samples", type=int, default=4)
     p_task3.add_argument("--refine-samples", type=int, default=8)
     p_task3.add_argument("--top-k", type=int, default=8)
+    p_task3.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
+    p_task3.add_argument("--mac-tag-bytes", type=int, default=32)
     p_task3.add_argument("--timing-work-factor", type=int, default=0)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
@@ -41,6 +45,8 @@ def main() -> None:
     p_task4.add_argument("--initial-samples", type=int, default=4)
     p_task4.add_argument("--refine-samples", type=int, default=8)
     p_task4.add_argument("--top-k", type=int, default=8)
+    p_task4.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
+    p_task4.add_argument("--mac-tag-bytes", type=int, default=32)
     p_task4.add_argument("--timing-work-factor", type=int, default=0)
 
     args = parser.parse_args()
@@ -60,6 +66,8 @@ def run_server(args: argparse.Namespace) -> None:
         enc_key,
         mac_key,
         timing_work_factor=args.timing_work_factor,
+        mac_alg=args.mac_alg,
+        mac_tag_bytes=args.mac_tag_bytes,
     )
     protocol.serve(args.addr, service)
 
@@ -107,6 +115,8 @@ def run_task3(args: argparse.Namespace) -> None:
             enc_key,
             mac_key,
             timing_work_factor=args.timing_work_factor,
+            mac_alg=args.mac_alg,
+            mac_tag_bytes=args.mac_tag_bytes,
         )
     )
 
@@ -136,11 +146,19 @@ def run_task3(args: argparse.Namespace) -> None:
             )
             elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
-            expected = utils.expected_payload_block(msg, mac_key, last_block_index)
+            expected = utils.expected_payload_block(
+                msg,
+                mac_key,
+                last_block_index,
+                mac_alg=args.mac_alg,
+                mac_tag_bytes=args.mac_tag_bytes,
+            )
 
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
             print(f"timing_work_factor: {args.timing_work_factor}")
+            print(f"mac_alg: {args.mac_alg}")
+            print(f"mac_tag_bytes: {args.mac_tag_bytes}")
             if message_mode == "literal":
                 print("message_mode: literal")
             else:
@@ -190,6 +208,8 @@ def run_task4(args: argparse.Namespace) -> None:
             enc_key,
             mac_key,
             timing_work_factor=args.timing_work_factor,
+            mac_alg=args.mac_alg,
+            mac_tag_bytes=args.mac_tag_bytes,
         )
     )
 
@@ -206,10 +226,12 @@ def run_task4(args: argparse.Namespace) -> None:
             f"server={server_addr} trials={args.trials} "
             f"timing_work_factor={args.timing_work_factor}"
         )
+        print(f"mac_alg={args.mac_alg} mac_tag_bytes={args.mac_tag_bytes}")
         if fixed_message is not None:
             print(f"message_mode=literal message_bytes={len(fixed_message)}")
         else:
             print(f"message_mode=random message_kb={message_kb}")
+        print("mode=single_block target=last_payload_block")
         print(
             "jitter_ms success_rate avg_queries avg_elapsed_ms "
             "completed_trials error_trials successes total_trials"
@@ -246,7 +268,13 @@ def run_task4(args: argparse.Namespace) -> None:
                                 ciphertext = client.encrypt(msg)
                                 num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
                                 last_block_index = num_blocks - 1
-                                expected = utils.expected_payload_block(msg, mac_key, last_block_index)
+                                expected = utils.expected_payload_block(
+                                    msg,
+                                    mac_key,
+                                    last_block_index,
+                                    mac_alg=args.mac_alg,
+                                    mac_tag_bytes=args.mac_tag_bytes,
+                                )
 
                                 def oracle(candidate: bytes) -> int:
                                     _, delta_ns = client.check(candidate)

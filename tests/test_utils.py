@@ -69,6 +69,34 @@ class UtilsTests(unittest.TestCase):
             ],
         )
 
+    def test_server_command_args_with_mac_options(self) -> None:
+        args = utils.server_command_args(
+            addr="127.0.0.1:4000",
+            enc_key=b"\x01\x02",
+            mac_key=b"\xaa\xbb",
+            timing_work_factor=3,
+            mac_alg="shake256",
+            mac_tag_bytes=64,
+        )
+        self.assertEqual(
+            args,
+            [
+                "server",
+                "--addr",
+                "127.0.0.1:4000",
+                "--enc-key",
+                "0102",
+                "--mac-key",
+                "aabb",
+                "--timing-work-factor",
+                "3",
+                "--mac-alg",
+                "shake256",
+                "--mac-tag-bytes",
+                "64",
+            ],
+        )
+
     def test_expected_payload_helpers(self) -> None:
         msg = b"abc"
         mac_key = b"\x11\x22\x33"
