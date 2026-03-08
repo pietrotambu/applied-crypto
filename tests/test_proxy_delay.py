@@ -13,17 +13,20 @@ class ProxyDelayTests(unittest.TestCase):
 
     def test_sleep_precise_long_delay_uses_sleep(self) -> None:
         with patch("padding_oracle.proxy.time.sleep") as sleep_mock:
-            with patch("padding_oracle.proxy.time.perf_counter_ns", side_effect=[0, 2_000_000]):
-                proxy._sleep_precise(1e-3)
+            with patch(
+                "padding_oracle.proxy.time.perf_counter_ns",
+                side_effect=[0, 2_000_000, 2_980_000, 3_100_000],
+            ):
+                proxy._sleep_precise(3e-3)
         sleep_mock.assert_called_once()
         self.assertGreater(sleep_mock.call_args.args[0], 0.0)
 
-    def test_delay_clamps_negative_total(self) -> None:
+    def test_delay_forwards_negative_total(self) -> None:
         rng = Mock()
         rng.uniform.return_value = -0.002
         with patch("padding_oracle.proxy._sleep_precise") as wait_mock:
             proxy._delay(rng, jitter_s=0.002)
-        wait_mock.assert_not_called()
+        wait_mock.assert_called_once_with(-0.002)
 
     def test_delay_positive_total_uses_precise_wait(self) -> None:
         rng = Mock()

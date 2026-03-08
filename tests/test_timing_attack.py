@@ -109,6 +109,37 @@ class TimingAttackTests(unittest.TestCase):
         )
         self.assertEqual(recovered, expected_plaintext)
 
+    def test_recover_block_timing_disambiguates_full_padding_last_byte(self) -> None:
+        prev = bytes([0x31, 0x42, 0x53, 0x64, 0x75, 0x86, 0x97, 0xA8, 0xB9, 0xCA, 0xDB, 0xEC, 0xFD, 0x10, 0x21, 0x32])
+        curr = bytes(16)
+
+        expected_plain = bytes([0x10] * 16)
+        intermediate = bytes(p ^ e for p, e in zip(prev, expected_plain))
+
+        def oracle(forged: bytes) -> int:
+            candidate_prev = forged[:16]
+            plain = bytes(i ^ c for i, c in zip(intermediate, candidate_prev))
+            try:
+                crypto.pkcs7_unpad(plain, crypto.BLOCK_SIZE)
+            except Exception:
+                return 1_000_000
+
+            # Intentionally bias full-block padding above pad=1 so the initial
+            # ranking would pick the wrong candidate without disambiguation.
+            if plain == expected_plain:
+                return 6_000_000
+            if plain[-1] == 0x01:
+                return 5_000_000
+            return 4_000_000
+
+        recovered, _queries = attacks.recover_block_timing(
+            prev,
+            curr,
+            oracle,
+            attacks.TimingConfig(initial_samples=1, refine_samples=2, top_candidates=8),
+        )
+        self.assertEqual(recovered, expected_plain)
+
 
 if __name__ == "__main__":
     unittest.main()

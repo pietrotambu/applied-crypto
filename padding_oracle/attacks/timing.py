@@ -73,7 +73,21 @@ def recover_block_timing(
             scores[i].samples += cfg.refine_samples
 
         scores.sort(key=lambda s: s.avg(), reverse=True)
-        best_guess = scores[0].guess
+        ranked = scores[:limit]
+        best_guess = ranked[0].guess
+
+        # For the first recovered byte (pad=1), there can be two valid-padding
+        # candidates when the target plaintext block is already full padding
+        # (e.g. 0x10 * 16). Probe by flipping the previous byte: valid pad=1
+        # survives, while full-block padding usually collapses.
+        if pos == crypto.BLOCK_SIZE - 1 and len(ranked) > 1:
+            best_guess, extra_queries = _resolve_last_byte_ambiguity(
+                ranked,
+                oracle,
+                prefix_len=len(prefix_bytes),
+                probe_samples=cfg.refine_samples,
+            )
+            queries += extra_queries
 
         intermediate[pos] = best_guess ^ pad
         plaintext[pos] = intermediate[pos] ^ prev[pos]
@@ -140,3 +154,27 @@ def _sample_duration_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -
     for _ in range(samples):
         total += int(oracle(ciphertext))
     return total
+
+
+def _resolve_last_byte_ambiguity(
+    candidates: list[Score],
+    oracle: TimingOracle,
+    prefix_len: int,
+    probe_samples: int,
+) -> tuple[int, int]:
+    probe_pos = prefix_len + crypto.BLOCK_SIZE - 2
+    best_guess = candidates[0].guess
+    best_probe_avg = float("-inf")
+    queries = 0
+
+    for candidate in candidates:
+        probe = bytearray(candidate.forged)
+        probe[probe_pos] ^= 0x01
+        total = _sample_duration_ns(oracle, bytes(probe), probe_samples)
+        queries += probe_samples
+        avg = total / probe_samples
+        if avg > best_probe_avg:
+            best_probe_avg = avg
+            best_guess = candidate.guess
+
+    return best_guess, queries
