@@ -129,7 +129,8 @@ def main() -> None:
     )
     parser.add_argument("--trials", type=int, default=10000, help="measured checks per path")
     parser.add_argument("--warmup", type=int, default=200, help="unreported warmup checks per path")
-    parser.add_argument("--message-kb", type=float, default=1.0, help="random plaintext size in KB")
+    parser.add_argument("--message", help="explicit plaintext to encrypt")
+    parser.add_argument("--message-kb", type=float, help="random plaintext size in KB")
     parser.add_argument("--jitter-ms", type=float, default=0.0, help="proxy jitter")
     args = parser.parse_args()
 
@@ -138,11 +139,21 @@ def main() -> None:
     if args.warmup < 0:
         raise ValueError("warmup must be >= 0")
     _ = utils.ms_to_seconds(args.jitter_ms)
-    _ = utils.kb_to_bytes(args.message_kb)
+
+    if args.message is not None:
+        if args.message_kb is not None:
+            print("warning: --message-kb is ignored because --message was provided")
+        msg = args.message.encode("utf-8")
+        message_mode = "literal"
+        message_kb = None
+    else:
+        message_kb = 1.0 if args.message_kb is None else args.message_kb
+        _ = utils.kb_to_bytes(message_kb)
+        msg = utils.random_message_from_kb(message_kb)
+        message_mode = "random"
 
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
-    msg = utils.random_message_from_kb(args.message_kb)
 
     server_addr = process.free_local_addr()
     server_proc = process.start_self_process(utils.server_command_args(server_addr, enc_key, mac_key))
@@ -192,7 +203,8 @@ def main() -> None:
         print(
             "flow4 path timing stats "
             f"(trials={args.trials}, warmup={args.warmup}, "
-            f"jitter_ms={args.jitter_ms:.6f}, message_kb={args.message_kb})"
+            f"jitter_ms={args.jitter_ms:.6f}, "
+            f"{'message_kb=' + str(message_kb) if message_mode == 'random' else 'message=literal'})"
         )
         print("path min_ms avg_ms max_ms")
         print(

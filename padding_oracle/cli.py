@@ -26,14 +26,16 @@ def main() -> None:
     p_task2.add_argument("--message", default="CBC padding oracle demo for task 2.")
 
     p_task3 = sub.add_parser("task3", help="timing-oracle attack over localhost processes")
-    p_task3.add_argument("--message-kb", type=float, default=1.0)
+    p_task3.add_argument("--message")
+    p_task3.add_argument("--message-kb", type=float)
     p_task3.add_argument("--initial-samples", type=int, default=4)
     p_task3.add_argument("--refine-samples", type=int, default=8)
     p_task3.add_argument("--top-k", type=int, default=8)
     p_task3.add_argument("--timing-work-factor", type=int, default=0)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
-    p_task4.add_argument("--message-kb", type=float, default=1.0)
+    p_task4.add_argument("--message")
+    p_task4.add_argument("--message-kb", type=float)
     p_task4.add_argument("--trials", type=int, default=3)
     p_task4.add_argument("--jitters-ms", default="0,0.005,0.01,0.015")
     p_task4.add_argument("--initial-samples", type=int, default=4)
@@ -87,7 +89,16 @@ def run_task2(args: argparse.Namespace) -> None:
 def run_task3(args: argparse.Namespace) -> None:
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
-    msg = utils.random_message_from_kb(args.message_kb)
+    if args.message is not None:
+        if args.message_kb is not None:
+            print("warning: --message-kb is ignored because --message was provided")
+        msg = args.message.encode("utf-8")
+        message_mode = "literal"
+        message_kb = None
+    else:
+        message_kb = 1.0 if args.message_kb is None else args.message_kb
+        msg = utils.random_message_from_kb(message_kb)
+        message_mode = "random"
 
     server_addr = process.free_local_addr()
     server_proc = process.start_self_process(
@@ -130,7 +141,10 @@ def run_task3(args: argparse.Namespace) -> None:
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
             print(f"timing_work_factor: {args.timing_work_factor}")
-            print(f"message_kb: {args.message_kb}")
+            if message_mode == "literal":
+                print("message_mode: literal")
+            else:
+                print(f"message_mode: random message_kb={message_kb}")
             print(f"message_bytes: {len(msg)}")
             print(f"target: last_payload_block (block_index={last_block_index})")
             print(f"queries: {queries}")
@@ -153,6 +167,17 @@ def run_task4(args: argparse.Namespace) -> None:
 
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
+
+    fixed_message: bytes | None = None
+    message_kb: float | None = None
+    if args.message is not None:
+        if args.message_kb is not None:
+            print("warning: --message-kb is ignored because --message was provided")
+        fixed_message = args.message.encode("utf-8")
+    else:
+        message_kb = 1.0 if args.message_kb is None else args.message_kb
+        _ = utils.kb_to_bytes(message_kb)
+
     server_addr = process.free_local_addr()
     server_proc = process.start_self_process(
         utils.server_command_args(
@@ -176,7 +201,10 @@ def run_task4(args: argparse.Namespace) -> None:
             f"server={server_addr} trials={args.trials} "
             f"timing_work_factor={args.timing_work_factor}"
         )
-        print(f"message_kb: {args.message_kb}")
+        if fixed_message is not None:
+            print(f"message_mode=literal message_bytes={len(fixed_message)}")
+        else:
+            print(f"message_mode=random message_kb={message_kb}")
         print("mode=single_block target=last_payload_block")
         print(
             "jitter_ms success_rate avg_queries avg_elapsed_ms "
@@ -210,7 +238,10 @@ def run_task4(args: argparse.Namespace) -> None:
                     for _ in range(args.trials):
                         try:
                             with protocol.Client(proxy_addr, timeout=2.0) as client:
-                                msg = utils.random_message_from_kb(args.message_kb)
+                                if fixed_message is not None:
+                                    msg = fixed_message
+                                else:
+                                    msg = utils.random_message_from_kb(message_kb)
                                 ciphertext = client.encrypt(msg)
                                 num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
                                 last_block_index = num_blocks - 1

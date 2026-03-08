@@ -50,6 +50,11 @@ Run task 3 with random 4 KB plaintext:
 make task3 ARGS='--message-kb 4'
 ```
 
+Run task 3 with a fixed plaintext:
+```bash
+make task3 ARGS="--message 'hello world'"
+```
+
 Run a fully custom CLI command:
 ```bash
 make run COMMAND='task4 --trials 3 --jitters-ms 0,0.01,0.02'
@@ -115,9 +120,15 @@ Analyze task4-style timing branch separation over many retries (through server +
 make timing-stats ARGS='--trials 10000 --warmup 500 --jitter-ms 0.01 --message-kb 1'
 ```
 
+Use a fixed message instead of random-by-size:
+```bash
+make timing-stats ARGS="--trials 10000 --warmup 500 --jitter-ms 0.01 --message 'hello world'"
+```
+
 The report is intentionally simple and prints:
 - `long_journey`: padding valid, MAC computed (MAC-fail path)
 - `short_journey`: padding fails early, no MAC
 - samples are constructed by tampering the block before the last ciphertext block (last-block attack shape)
 - `min_ms`, `avg_ms`, `max_ms` for each journey
 - `delta_avg_ms(long-short)` as the key signal
+- if both `--message` and `--message-kb` are provided, `--message` is used and a warning is printed.
