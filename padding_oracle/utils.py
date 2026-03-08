@@ -126,3 +126,28 @@ def expected_payload_block(
         raise ValueError(f"block index {block_index} out of range [1,{blocks}]")
     start = (block_index - 1) * crypto.BLOCK_SIZE
     return payload[start: start + crypto.BLOCK_SIZE]
+
+
+def choose_single_block_target(
+    ciphertext: bytes,
+    msg_len: int,
+    mac_tag_bytes: int,
+) -> tuple[int, str]:
+    if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
+        raise ValueError("ciphertext must include IV and be a multiple of 16 bytes")
+    if msg_len < 0:
+        raise ValueError("msg_len must be >= 0")
+    if mac_tag_bytes < 1:
+        raise ValueError("mac_tag_bytes must be >= 1")
+
+    num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+    last_block_index = num_blocks - 1
+    payload_len = msg_len + mac_tag_bytes
+
+    # If payload is already block-aligned, PKCS#7 appends a full 0x10 block.
+    # Skip that pure-padding final block and target the previous block instead.
+    if payload_len % crypto.BLOCK_SIZE == 0:
+        if last_block_index <= 1:
+            raise ValueError("ciphertext too short to skip full-padding last block")
+        return last_block_index - 1, "second_last_payload_block"
+    return last_block_index, "last_payload_block"

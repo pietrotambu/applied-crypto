@@ -124,8 +124,11 @@ def run_task3(args: argparse.Namespace) -> None:
         process.wait_for_tcp(server_addr, timeout=3.0)
         with protocol.Client(server_addr, timeout=2.0) as client:
             ciphertext = client.encrypt(msg)
-            num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
-            last_block_index = num_blocks - 1
+            target_block_index, target_name = utils.choose_single_block_target(
+                ciphertext,
+                msg_len=len(msg),
+                mac_tag_bytes=args.mac_tag_bytes,
+            )
 
             def oracle(candidate: bytes) -> int:
                 _, delta_ns = client.check(candidate)
@@ -140,7 +143,7 @@ def run_task3(args: argparse.Namespace) -> None:
             start = time.perf_counter_ns()
             recovered, queries = attacks.recover_ciphertext_block_timing(
                 ciphertext,
-                last_block_index,
+                target_block_index,
                 oracle,
                 cfg,
             )
@@ -149,7 +152,7 @@ def run_task3(args: argparse.Namespace) -> None:
             expected = utils.expected_payload_block(
                 msg,
                 mac_key,
-                last_block_index,
+                target_block_index,
                 mac_alg=args.mac_alg,
                 mac_tag_bytes=args.mac_tag_bytes,
             )
@@ -164,7 +167,7 @@ def run_task3(args: argparse.Namespace) -> None:
             else:
                 print(f"message_mode: random message_kb={message_kb}")
             print(f"message_bytes: {len(msg)}")
-            print(f"target: last_payload_block (block_index={last_block_index})")
+            print(f"target: {target_name} (block_index={target_block_index})")
             print(f"queries: {queries}")
             print(f"elapsed_ms: {elapsed_ms:.2f}")
             print(f"recovered_hex: {recovered.hex()}")
@@ -231,7 +234,7 @@ def run_task4(args: argparse.Namespace) -> None:
             print(f"message_mode=literal message_bytes={len(fixed_message)}")
         else:
             print(f"message_mode=random message_kb={message_kb}")
-        print("mode=single_block target=last_payload_block")
+        print("mode=single_block target=auto(last_or_second_last_if_full_padding)")
         print(
             "jitter_ms success_rate avg_queries avg_elapsed_ms "
             "completed_trials error_trials successes total_trials"
@@ -266,12 +269,15 @@ def run_task4(args: argparse.Namespace) -> None:
                             with protocol.Client(proxy_addr, timeout=2.0) as client:
                                 msg = base_message
                                 ciphertext = client.encrypt(msg)
-                                num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
-                                last_block_index = num_blocks - 1
+                                target_block_index, _target_name = utils.choose_single_block_target(
+                                    ciphertext,
+                                    msg_len=len(msg),
+                                    mac_tag_bytes=args.mac_tag_bytes,
+                                )
                                 expected = utils.expected_payload_block(
                                     msg,
                                     mac_key,
-                                    last_block_index,
+                                    target_block_index,
                                     mac_alg=args.mac_alg,
                                     mac_tag_bytes=args.mac_tag_bytes,
                                 )
@@ -283,7 +289,7 @@ def run_task4(args: argparse.Namespace) -> None:
                                 start = time.perf_counter_ns()
                                 recovered, queries = attacks.recover_ciphertext_block_timing(
                                     ciphertext,
-                                    last_block_index,
+                                    target_block_index,
                                     oracle,
                                     cfg,
                                 )

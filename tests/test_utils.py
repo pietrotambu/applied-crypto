@@ -113,6 +113,28 @@ class UtilsTests(unittest.TestCase):
         self.assertEqual(len(out), 512)
         self.assertTrue(out.decode("ascii").isalnum())
 
+    def test_choose_single_block_target_uses_last_when_not_full_padding(self) -> None:
+        # IV + 4 ciphertext blocks
+        ciphertext = b"\x00" * (16 * 5)
+        block_index, name = utils.choose_single_block_target(
+            ciphertext,
+            msg_len=31,
+            mac_tag_bytes=32,
+        )
+        self.assertEqual(block_index, 4)
+        self.assertEqual(name, "last_payload_block")
+
+    def test_choose_single_block_target_skips_full_padding_last_block(self) -> None:
+        # IV + 4 ciphertext blocks
+        ciphertext = b"\x00" * (16 * 5)
+        block_index, name = utils.choose_single_block_target(
+            ciphertext,
+            msg_len=32,
+            mac_tag_bytes=32,
+        )
+        self.assertEqual(block_index, 3)
+        self.assertEqual(name, "second_last_payload_block")
+
 
 if __name__ == "__main__":
     unittest.main()
