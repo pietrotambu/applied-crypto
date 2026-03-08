@@ -172,7 +172,6 @@ def run_task3(args: argparse.Namespace) -> None:
             print(f"elapsed_ms: {elapsed_ms:.2f}")
             print(f"recovered_hex: {recovered.hex()}")
             print(f"expected_hex:  {expected.hex()}")
-            print(f"recovered_ascii: {recovered.decode(errors='replace')!r}")
             print(f"success: {recovered == expected}")
     finally:
         process.stop_process(server_proc)
