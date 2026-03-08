@@ -21,20 +21,20 @@ class ProxyDelayTests(unittest.TestCase):
         sleep_mock.assert_called_once()
         self.assertGreater(sleep_mock.call_args.args[0], 0.0)
 
-    def test_delay_forwards_negative_total(self) -> None:
+    def test_delay_uses_half_normal_absolute_value(self) -> None:
         rng = Mock()
-        rng.uniform.return_value = -0.002
+        rng.gauss.return_value = -0.0005
         with patch("padding_oracle.proxy._sleep_precise") as wait_mock:
             proxy._delay(rng, jitter_s=0.002)
-        wait_mock.assert_called_once_with(-0.002)
+        wait_mock.assert_called_once_with(0.0005)
 
-    def test_delay_positive_total_uses_precise_wait(self) -> None:
+    def test_delay_retries_when_sample_exceeds_jitter(self) -> None:
         rng = Mock()
-        rng.uniform.return_value = 0.0005
+        rng.gauss.side_effect = [0.01, 0.0005]
         with patch("padding_oracle.proxy._sleep_precise") as wait_mock:
             proxy._delay(rng, jitter_s=0.002)
-        wait_mock.assert_called_once()
-        self.assertAlmostEqual(wait_mock.call_args.args[0], 0.0005, places=9)
+        self.assertEqual(rng.gauss.call_count, 2)
+        wait_mock.assert_called_once_with(0.0005)
 
 
 if __name__ == "__main__":

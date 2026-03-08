@@ -74,9 +74,17 @@ def _handle_proxy_connection(
 
 
 def _delay(rng: random.Random, jitter_s: float) -> None:
-    if jitter_s <= 0: return
+    if jitter_s <= 0:
+        return
 
-    total = rng.uniform(0.0, jitter_s)
+    # Half-normal jitter: highest density near 0, low probability near jitter_s.
+    sigma = jitter_s / 3.0
+    if sigma <= 0:
+        return
+    while True:
+        total = abs(rng.gauss(0.0, sigma))
+        if total <= jitter_s:
+            break
     _sleep_precise(total)
 
 

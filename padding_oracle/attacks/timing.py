@@ -1,7 +1,11 @@
 from dataclasses import dataclass
+import math
 
 from .. import crypto
 from .common import AttackError, TimingOracle
+
+_ADAPTIVE_REFINE_ROUNDS = 6
+_CONFIDENCE_Z = 2.5
 
 
 @dataclass
@@ -22,11 +26,21 @@ class TimingConfig:
 class Score:
     guess: int
     total: int
+    total_sq: int
     samples: int
     forged: bytes
 
     def avg(self) -> float:
         return self.total / self.samples
+
+    def variance(self) -> float:
+        if self.samples < 2:
+            return 0.0
+        mean = self.avg()
+        var = (self.total_sq / self.samples) - (mean * mean)
+        if var <= 0:
+            return 0.0
+        return var
 
 
 def recover_block_timing(
@@ -59,18 +73,41 @@ def recover_block_timing(
             candidate_prev[pos] = guess
             forged = prefix_bytes + bytes(candidate_prev) + curr
 
-            total = _sample_duration_ns(oracle, forged, cfg.initial_samples)
+            total, total_sq = _sample_stats_ns(oracle, forged, cfg.initial_samples)
             queries += cfg.initial_samples
-            scores.append(Score(guess=guess, total=total, samples=cfg.initial_samples, forged=forged))
+            scores.append(
+                Score(
+                    guess=guess,
+                    total=total,
+                    total_sq=total_sq,
+                    samples=cfg.initial_samples,
+                    forged=forged,
+                )
+            )
 
         scores.sort(key=lambda s: s.avg(), reverse=True)
         limit = min(cfg.top_candidates, len(scores))
 
         for i in range(limit):
-            extra = _sample_duration_ns(oracle, scores[i].forged, cfg.refine_samples)
+            extra, extra_sq = _sample_stats_ns(oracle, scores[i].forged, cfg.refine_samples)
             queries += cfg.refine_samples
             scores[i].total += extra
+            scores[i].total_sq += extra_sq
             scores[i].samples += cfg.refine_samples
+
+        for _ in range(_ADAPTIVE_REFINE_ROUNDS):
+            scores.sort(key=lambda s: s.avg(), reverse=True)
+            ranked = scores[:limit]
+            if len(ranked) < 2:
+                break
+            if _is_confident(ranked[0], ranked[1]):
+                break
+            for candidate in ranked:
+                extra, extra_sq = _sample_stats_ns(oracle, candidate.forged, cfg.refine_samples)
+                queries += cfg.refine_samples
+                candidate.total += extra
+                candidate.total_sq += extra_sq
+                candidate.samples += cfg.refine_samples
 
         scores.sort(key=lambda s: s.avg(), reverse=True)
         ranked = scores[:limit]
@@ -150,10 +187,29 @@ def recover_plaintext_timing(
 
 
 def _sample_duration_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> int:
-    total = 0
-    for _ in range(samples):
-        total += int(oracle(ciphertext))
+    total, _ = _sample_stats_ns(oracle, ciphertext, samples)
     return total
+
+
+def _sample_stats_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> tuple[int, int]:
+    total = 0
+    total_sq = 0
+    for _ in range(samples):
+        value = int(oracle(ciphertext))
+        total += value
+        total_sq += value * value
+    return total, total_sq
+
+
+def _is_confident(best: Score, second: Score) -> bool:
+    gap = best.avg() - second.avg()
+    if gap <= 0:
+        return False
+
+    se = math.sqrt((best.variance() / best.samples) + (second.variance() / second.samples))
+    if se <= 0:
+        return True
+    return gap > (_CONFIDENCE_Z * se)
 
 
 def _resolve_last_byte_ambiguity(
