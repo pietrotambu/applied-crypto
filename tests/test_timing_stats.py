@@ -1,20 +1,8 @@
 import unittest
+from unittest.mock import Mock
 
 from padding_oracle import crypto
 from padding_oracle.timing_stats import _collect_samples, _summarize, _tamper_mac, _tamper_padding
-
-
-class _FakeClient:
-    def __init__(self, responses: list[tuple[bool, int]]):
-        self._responses = list(responses)
-        self._i = 0
-
-    def check(self, _ciphertext: bytes) -> tuple[bool, int]:
-        if self._i >= len(self._responses):
-            return self._responses[-1]
-        response = self._responses[self._i]
-        self._i += 1
-        return response
 
 
 class TimingStatsTests(unittest.TestCase):
@@ -26,8 +14,9 @@ class TimingStatsTests(unittest.TestCase):
         self.assertEqual(summary.max_ms, 3.0)
 
     def test_collect_samples_counts_after_warmup(self) -> None:
-        client = _FakeClient(
-            responses=[
+        client = Mock()
+        client.check = Mock(
+            side_effect=[
                 (False, 10),  # warmup
                 (True, 20),
                 (False, 30),
@@ -36,6 +25,7 @@ class TimingStatsTests(unittest.TestCase):
         )
         samples = _collect_samples(client, b"ct", trials=3, warmup=1)
         self.assertEqual(samples, [20, 30, 40])
+        self.assertEqual(client.check.call_count, 4)
 
     def test_tamper_helpers_change_bytes(self) -> None:
         ciphertext = crypto.random_bytes(2 * crypto.BLOCK_SIZE)

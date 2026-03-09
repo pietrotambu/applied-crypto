@@ -1,8 +1,6 @@
 import unittest
-import hashlib
-import hmac
 
-from padding_oracle import utils
+from padding_oracle import crypto, services, utils
 
 
 class UtilsTests(unittest.TestCase):
@@ -50,29 +48,15 @@ class UtilsTests(unittest.TestCase):
             ],
         )
 
-    def test_server_command_args_is_minimal(self) -> None:
-        args = utils.server_command_args(
-            addr="127.0.0.1:4000",
-            enc_key=b"\x01\x02",
-            mac_key=b"\xaa\xbb",
-        )
-        self.assertEqual(
-            args,
-            [
-                "server",
-                "--addr",
-                "127.0.0.1:4000",
-                "--enc-key",
-                "0102",
-                "--mac-key",
-                "aabb",
-            ],
-        )
+    def test_split_addr(self) -> None:
+        host, port = utils.split_addr("127.0.0.1:4000")
+        self.assertEqual(host, "127.0.0.1")
+        self.assertEqual(port, 4000)
 
     def test_expected_payload_helpers(self) -> None:
         msg = b"abc"
         mac_key = b"\x11\x22\x33"
-        tag = hmac.new(mac_key, msg, hashlib.sha256).digest()
+        tag = services.compute_mac_tag(mac_key, msg)
         expected = msg + tag
         padded = utils.expected_payload_padded(msg, mac_key)
 
@@ -86,23 +70,35 @@ class UtilsTests(unittest.TestCase):
         self.assertTrue(out.decode("ascii").isalnum())
 
     def test_choose_single_block_target_uses_last_when_not_full_padding(self) -> None:
-        # IV + 4 ciphertext blocks
-        ciphertext = b"\x00" * (16 * 5)
+        service = services.MacThenEncryptService(
+            crypto.random_bytes(32),
+            crypto.random_bytes(32),
+        )
+        msg = b"x" * 31
+        ciphertext = service.encrypt(msg)
+        num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+
         block_index, name = utils.choose_single_block_target(
             ciphertext,
-            msg_len=31,
+            msg_len=len(msg),
         )
-        self.assertEqual(block_index, 4)
+        self.assertEqual(block_index, num_blocks - 1)
         self.assertEqual(name, "last_payload_block")
 
     def test_choose_single_block_target_skips_full_padding_last_block(self) -> None:
-        # IV + 4 ciphertext blocks
-        ciphertext = b"\x00" * (16 * 5)
+        service = services.MacThenEncryptService(
+            crypto.random_bytes(32),
+            crypto.random_bytes(32),
+        )
+        msg = b"x" * 32
+        ciphertext = service.encrypt(msg)
+        num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+
         block_index, name = utils.choose_single_block_target(
             ciphertext,
-            msg_len=32,
+            msg_len=len(msg),
         )
-        self.assertEqual(block_index, 3)
+        self.assertEqual(block_index, num_blocks - 2)
         self.assertEqual(name, "second_last_payload_block")
 
 
