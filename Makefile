@@ -6,7 +6,7 @@ CLI ?= $(PYTHON) -m padding_oracle.cli
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv install install-editable run boolean timing task4 task4-netem timing-stats test
+.PHONY: help venv install install-editable run boolean timing victim attacker task4 task4-netem timing-stats test
 
 help:
 	@echo "Targets:"
@@ -15,7 +15,9 @@ help:
 	@echo "  install-editable  Install package in editable mode (adds padding-oracle command)"
 	@echo "  run               Run any CLI command. Example: make run COMMAND='boolean'"
 	@echo "  boolean           Run boolean-oracle demo (use ARGS for options)"
-	@echo "  timing            Run timing-oracle demo (use ARGS for options)"
+	@echo "  timing            Run self-contained local timing attack demo (use ARGS for options)"
+	@echo "  victim            Run victim/oracle server (use ARGS for options)"
+	@echo "  attacker          Run timing attacker against --addr host:port (use ARGS for options)"
 	@echo "  timing-stats      Analyze timing path separation stats (use ARGS for options)"
 	@echo "  test              Run unit tests"
 
@@ -45,6 +47,12 @@ boolean: $(PYTHON)
 
 timing: $(PYTHON)
 	$(CLI) timing $(ARGS)
+
+victim: $(PYTHON)
+	$(CLI) victim $(ARGS)
+
+attacker: $(PYTHON)
+	$(CLI) attacker $(ARGS)
 
 timing-stats: $(PYTHON)
 	$(PYTHON) -m padding_oracle.timing_stats $(ARGS)

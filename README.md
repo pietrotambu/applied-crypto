@@ -15,7 +15,7 @@ use external setup (for example two machines on a LAN, or Linux `tc netem`).
 - `padding_oracle/protocol.py`: line-based TCP protocol (`ENCRYPT`, `CHECK`).
 - `padding_oracle/attacks/`: boolean and timing attack implementations.
 - `padding_oracle/process.py`: subprocess/socket helpers for orchestration.
-- `padding_oracle/cli.py`: command entrypoints for `server`, `boolean`, and `timing`.
+- `padding_oracle/cli.py`: command entrypoints for `server`/`victim`, `attacker`, `boolean`, and `timing`.
 - `padding_oracle/timing_stats.py`: long-path vs short-path timing separation utility.
 - `scripts/task4_baseline.sh`: baseline Task 4 run script.
 - `scripts/task4_netem_lo_sweep.sh`: loopback netem sweep script for Task 4.
@@ -46,10 +46,58 @@ make timing ARGS='--message-kb 4'
 make timing ARGS="--message 'hello world'"
 ```
 
+Run split victim/attacker mode:
+```bash
+make victim ARGS='--addr 0.0.0.0:4000'
+make attacker ARGS='--addr 127.0.0.1:4000 --message-kb 1'
+```
+
 Run a custom CLI command:
 ```bash
 make run COMMAND='boolean --message "hello"'
 make run COMMAND='timing --message-kb 1'
+```
+
+## Distributed Victim/Attacker Setup (Two Machines)
+
+1. Start victim/oracle on machine B:
+```bash
+python3 -m padding_oracle.cli victim --addr 0.0.0.0:4000
+```
+You can also pin keys explicitly:
+```bash
+python3 -m padding_oracle.cli victim \
+  --addr 0.0.0.0:4000 \
+  --enc-key <hex_aes_key> \
+  --mac-key <hex_mac_key>
+```
+
+2. Run attacker on machine A against machine B:
+```bash
+python3 -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16
+```
+
+3. Optional validation (if attacker knows victim MAC key):
+```bash
+python3 -m padding_oracle.cli attacker \
+  --addr <victim_ip>:4000 \
+  --message-kb 16 \
+  --verify-mac-key <hex_mac_key>
+```
+
+Notes:
+- Victim must bind to a reachable interface (`0.0.0.0` or specific LAN IP).
+- Ensure firewall/security group allows TCP on the chosen port.
+- `timing` remains the self-contained localhost demo; `attacker` is the split-mode command.
+- Victim stdout includes parse-friendly lines: `ENC_KEY_HEX=...` and `MAC_KEY_HEX=...`.
+
+Example extraction from victim logs:
+```bash
+MAC_KEY_HEX="$(rg '^MAC_KEY_HEX=' victim.log | tail -n1 | cut -d= -f2)"
+python3 -m padding_oracle.cli attacker \
+  --addr <victim_ip>:4000 \
+  --message-kb 16 \
+  --verify-mac-key "$MAC_KEY_HEX"
 ```
 
 ## Running Tests

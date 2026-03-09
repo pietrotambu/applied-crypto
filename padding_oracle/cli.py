@@ -10,6 +10,19 @@ from . import attacks, crypto, process, protocol, services, utils
 from .console import CONSOLE
 
 
+def _add_server_args(parser: argparse.ArgumentParser) -> None:
+    """Attach common victim/server flags to a parser."""
+    parser.add_argument("--addr", default="127.0.0.1:4000")
+    parser.add_argument(
+        "--enc-key",
+        help="hex AES key (optional; random keys are generated when both keys are omitted)",
+    )
+    parser.add_argument(
+        "--mac-key",
+        help="hex HMAC key (optional; random keys are generated when both keys are omitted)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser."""
     parser = argparse.ArgumentParser(
@@ -18,17 +31,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_server = sub.add_parser("server", help="run vulnerable MAC-then-encrypt receiver")
-    p_server.add_argument("--addr", default="127.0.0.1:4000")
-    p_server.add_argument("--enc-key", required=True, help="hex AES key")
-    p_server.add_argument("--mac-key", required=True, help="hex HMAC key")
+    p_server = sub.add_parser("server", help="run vulnerable MAC-then-encrypt victim/oracle")
+    _add_server_args(p_server)
+
+    p_victim = sub.add_parser("victim", help="alias of server for two-machine setups")
+    _add_server_args(p_victim)
 
     p_boolean = sub.add_parser("boolean", help="basic boolean padding-oracle attack")
     p_boolean.add_argument("--message", default="CBC padding oracle demo for task 2.")
 
-    p_timing = sub.add_parser("timing", help="timing-oracle attack over localhost processes")
+    p_timing = sub.add_parser("timing", help="self-contained local timing-oracle demo")
     p_timing.add_argument("--message")
     p_timing.add_argument("--message-kb", type=float)
+    p_timing.add_argument("--target-block-index", type=int, help="1-based payload block index to recover")
+
+    p_attacker = sub.add_parser("attacker", help="timing-oracle attacker against a remote/local victim")
+    p_attacker.add_argument("--addr", required=True, help="victim/oracle address host:port")
+    p_attacker.add_argument("--message")
+    p_attacker.add_argument("--message-kb", type=float)
+    p_attacker.add_argument("--target-block-index", type=int, help="1-based payload block index to recover")
+    p_attacker.add_argument(
+        "--verify-mac-key",
+        help="optional hex MAC key to verify recovered block against expected payload",
+    )
+    p_attacker.add_argument("--timeout", type=float, default=2.0, help="TCP connect timeout in seconds")
     return parser
 
 
@@ -37,8 +63,10 @@ def main() -> None:
     args = build_parser().parse_args()
     handlers = {
         "server": run_server,
+        "victim": run_server,
         "boolean": run_boolean,
         "timing": run_timing,
+        "attacker": run_attacker,
     }
     try:
         handler = handlers[args.command]
@@ -49,12 +77,15 @@ def main() -> None:
 
 def run_server(args: argparse.Namespace) -> None:
     """Run the vulnerable MAC-then-encrypt receiver."""
-    enc_key = utils.parse_hex_aes_key(args.enc_key)
-    mac_key = utils.parse_hex_mac_key(args.mac_key)
+    enc_key, mac_key = _resolve_server_keys(args.enc_key, args.mac_key)
     service = services.MacThenEncryptService(
         enc_key,
         mac_key,
     )
+    CONSOLE.section("Victim / Oracle Server")
+    CONSOLE.kv("addr", args.addr)
+    CONSOLE.kv("enc_key", enc_key.hex())
+    CONSOLE.kv("mac_key", mac_key.hex())
     protocol.serve(args.addr, service)
 
 
@@ -92,16 +123,16 @@ def run_timing(args: argparse.Namespace) -> None:
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
         with protocol.Client(server_addr, timeout=2.0) as client:
-            ciphertext = client.encrypt(msg)
-            target_block_index, target_name = utils.choose_single_block_target(
-                ciphertext,
-                msg_len=len(msg),
-            )
-
-            recovered, queries, elapsed_ms = _recover_target_block(
+            (
+                recovered,
+                queries,
+                elapsed_ms,
+                target_block_index,
+                target_name,
+            ) = _recover_selected_block(
                 client=client,
-                ciphertext=ciphertext,
-                target_block_index=target_block_index,
+                message=msg,
+                target_block_index=args.target_block_index,
                 config=cfg,
             )
 
@@ -127,6 +158,54 @@ def run_timing(args: argparse.Namespace) -> None:
             CONSOLE.kv("success", CONSOLE.ok_label(ok))
     finally:
         process.stop_process(server_proc)
+
+
+def run_attacker(args: argparse.Namespace) -> None:
+    """Run timing attack against a manually started victim/oracle endpoint."""
+    if args.timeout <= 0:
+        raise ValueError("timeout must be > 0")
+
+    msg, message_mode, message_kb = _resolve_message_bytes(args.message, args.message_kb)
+    cfg = _timing_config()
+    verify_mac_key = (
+        utils.parse_hex_mac_key(args.verify_mac_key) if args.verify_mac_key is not None else None
+    )
+
+    CONSOLE.section("Timing Oracle Attacker")
+    CONSOLE.kv("victim", args.addr)
+    CONSOLE.kv("status", "starting execution...")
+
+    process.wait_for_tcp(args.addr, timeout=max(0.1, args.timeout))
+    with protocol.Client(args.addr, timeout=args.timeout) as client:
+        (
+            recovered,
+            queries,
+            elapsed_ms,
+            target_block_index,
+            target_name,
+        ) = _recover_selected_block(
+            client=client,
+            message=msg,
+            target_block_index=args.target_block_index,
+            config=cfg,
+        )
+
+    CONSOLE.kv("message_mode", "literal" if message_mode == "literal" else f"random message_kb={message_kb}")
+    CONSOLE.kv("message_bytes", len(msg))
+    CONSOLE.kv("target", f"{target_name} (block_index={target_block_index})")
+    CONSOLE.kv("queries", queries)
+    CONSOLE.kv("elapsed_ms", f"{elapsed_ms:.2f}")
+    CONSOLE.kv("recovered_hex", recovered.hex())
+
+    if verify_mac_key is None:
+        CONSOLE.kv("success", "N/A (provide --verify-mac-key to validate)")
+        return
+
+    expected = utils.expected_payload_block(msg, verify_mac_key, target_block_index)
+    ok = recovered == expected
+    if not ok:
+        CONSOLE.kv("expected_hex", expected.hex())
+    CONSOLE.kv("success", CONSOLE.ok_label(ok))
 
 
 def _start_server(
@@ -157,6 +236,18 @@ def _resolve_message_bytes(
     selected_kb = 1.0 if message_kb is None else message_kb
     # Validation happens inside random_message_from_kb via kb_to_bytes.
     return utils.random_message_from_kb(selected_kb), "random", selected_kb
+
+
+def _resolve_server_keys(
+    enc_key_hex: str | None,
+    mac_key_hex: str | None,
+) -> tuple[bytes, bytes]:
+    """Resolve explicit hex keys or generate both keys when omitted."""
+    if enc_key_hex is None and mac_key_hex is None:
+        return crypto.random_bytes(32), crypto.random_bytes(32)
+    if enc_key_hex is None or mac_key_hex is None:
+        raise ValueError("provide both --enc-key and --mac-key, or omit both")
+    return utils.parse_hex_aes_key(enc_key_hex), utils.parse_hex_mac_key(mac_key_hex)
 
 
 def _timing_config() -> attacks.TimingConfig:
@@ -198,6 +289,43 @@ def _recover_target_block(
     )
     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
     return recovered, queries, elapsed_ms
+
+
+def _recover_selected_block(
+    client: protocol.Client,
+    message: bytes,
+    target_block_index: int | None,
+    config: attacks.TimingConfig,
+) -> tuple[bytes, int, float, int, str]:
+    """Encrypt message, choose target block, and recover that block."""
+    ciphertext = client.encrypt(message)
+    block_index, target_name = _resolve_target_block_index(
+        ciphertext=ciphertext,
+        msg_len=len(message),
+        requested=target_block_index,
+    )
+    recovered, queries, elapsed_ms = _recover_target_block(
+        client=client,
+        ciphertext=ciphertext,
+        target_block_index=block_index,
+        config=config,
+    )
+    return recovered, queries, elapsed_ms, block_index, target_name
+
+
+def _resolve_target_block_index(
+    ciphertext: bytes,
+    msg_len: int,
+    requested: int | None,
+) -> tuple[int, str]:
+    """Resolve manual target index or pick a safe default target block."""
+    if requested is None:
+        return utils.choose_single_block_target(ciphertext, msg_len=msg_len)
+
+    num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+    if requested < 1 or requested >= num_blocks:
+        raise ValueError(f"target block index {requested} out of range [1,{num_blocks - 1}]")
+    return requested, "manual_payload_block"
 
 
 if __name__ == "__main__":
