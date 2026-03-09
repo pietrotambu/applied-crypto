@@ -90,7 +90,6 @@ def server_command_args(
     addr: str,
     enc_key: bytes,
     mac_key: bytes,
-    timing_work_factor: int = 0,
     mac_alg: str = "sha256",
     mac_tag_bytes: int = 32,
 ) -> list[str]:
@@ -104,9 +103,6 @@ def server_command_args(
         "--mac-key",
         mac_key.hex(),
     ]
-    factor = max(1, int(timing_work_factor))
-    if factor != 1:
-        args.extend(["--timing-work-factor", str(factor)])
     if mac_alg != "sha256":
         args.extend(["--mac-alg", mac_alg])
     if int(mac_tag_bytes) != 32:

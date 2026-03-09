@@ -37,7 +37,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_server.add_argument("--mac-key", required=True, help="hex HMAC key")
     p_server.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
     p_server.add_argument("--mac-tag-bytes", type=int, default=32)
-    p_server.add_argument("--timing-work-factor", type=int, default=0)
 
     p_proxy = sub.add_parser("proxy", help="run localhost delay/jitter proxy")
     p_proxy.add_argument("--listen", required=True)
@@ -55,7 +54,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_task3.add_argument("--top-k", type=int, default=12)
     p_task3.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
     p_task3.add_argument("--mac-tag-bytes", type=int, default=32)
-    p_task3.add_argument("--timing-work-factor", type=int, default=0)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
     p_task4.add_argument("--message")
@@ -67,7 +65,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_task4.add_argument("--top-k", type=int, default=12)
     p_task4.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
     p_task4.add_argument("--mac-tag-bytes", type=int, default=32)
-    p_task4.add_argument("--timing-work-factor", type=int, default=0)
     return parser
 
 
@@ -95,7 +92,6 @@ def run_server(args: argparse.Namespace) -> None:
     service = services.MacThenEncryptService(
         enc_key,
         mac_key,
-        timing_work_factor=args.timing_work_factor,
         mac_alg=args.mac_alg,
         mac_tag_bytes=args.mac_tag_bytes,
     )
@@ -164,7 +160,6 @@ def run_task3(args: argparse.Namespace) -> None:
 
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
-            print(f"timing_work_factor: {args.timing_work_factor}")
             print(f"mac_alg: {args.mac_alg}")
             print(f"mac_tag_bytes: {args.mac_tag_bytes}")
             if message_mode == "literal":
@@ -201,10 +196,7 @@ def run_task4(args: argparse.Namespace) -> None:
         process.wait_for_tcp(server_addr, timeout=3.0)
 
         print("task4: timing-attack robustness under injected localhost noise")
-        print(
-            f"server={server_addr} trials={args.trials} "
-            f"timing_work_factor={args.timing_work_factor}"
-        )
+        print(f"server={server_addr} trials={args.trials}")
         print(f"mac_alg={args.mac_alg} mac_tag_bytes={args.mac_tag_bytes}")
         if message_mode == "literal":
             print(f"message_mode=literal message_bytes={len(base_message)}")
@@ -260,7 +252,6 @@ def _start_server(
             server_addr,
             enc_key,
             mac_key,
-            timing_work_factor=args.timing_work_factor,
             mac_alg=args.mac_alg,
             mac_tag_bytes=args.mac_tag_bytes,
         )
@@ -369,6 +360,7 @@ def _run_jitter_trials(
 ) -> TrialAggregate:
     """Run all trials for one jitter value and return aggregate metrics."""
     aggregate = TrialAggregate()
+    # Start one proxy per jitter row so each row has isolated noise settings.
     proxy_addr = process.free_local_addr()
     proxy_proc = process.start_self_process(
         utils.proxy_command_args(
@@ -382,6 +374,7 @@ def _run_jitter_trials(
         try:
             process.wait_for_tcp(proxy_addr, timeout=3.0)
         except Exception as exc:
+            # If the proxy never came up, mark every trial as an error.
             aggregate.error_trials = trials
             aggregate.last_error = exc
             return aggregate
@@ -401,6 +394,7 @@ def _run_jitter_trials(
                 aggregate.last_error = exc
                 continue
 
+            # Completed trials contribute to averages; failed trials are counted separately.
             aggregate.completed_trials += 1
             aggregate.total_queries += queries
             aggregate.total_elapsed_ms += elapsed_ms

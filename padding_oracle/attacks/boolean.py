@@ -27,6 +27,7 @@ def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple
     for pos in range(crypto.BLOCK_SIZE - 1, -1, -1):
         pad = crypto.BLOCK_SIZE - pos
         base = bytearray(prev)
+        # Rewrite already-solved suffix bytes so they decrypt to the current pad.
         for j in range(crypto.BLOCK_SIZE - 1, pos, -1):
             base[j] = intermediate[j] ^ pad
 
@@ -41,12 +42,15 @@ def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple
                 continue
 
             if pos == crypto.BLOCK_SIZE - 1:
+                # For pad=1 a positive can be caused by pre-existing padding.
+                # Flip a neighbor byte and re-check to keep only true pad=1 hits.
                 probe = bytearray(candidate_prev)
                 probe[pos - 1] ^= 0x01
                 queries += 1
                 if not oracle(bytes(probe) + curr):
                     continue
 
+            # D[pos] = C'_{i-1}[pos] XOR pad; then P[pos] = D[pos] XOR C_{i-1}[pos].
             intermediate[pos] = guess ^ pad
             plaintext[pos] = intermediate[pos] ^ prev[pos]
             found = True

@@ -71,13 +71,11 @@ class MacThenEncryptService:
         self,
         enc_key: bytes,
         mac_key: bytes,
-        timing_work_factor: int = 0,
         mac_alg: str = "sha256",
         mac_tag_bytes: int = 32,
     ):
         self._enc_key = bytes(enc_key)
         self._mac_key = bytes(mac_key)
-        self._timing_work_factor = max(1, int(timing_work_factor))
         self._mac_alg = mac_alg
         self._mac_tag_bytes = int(mac_tag_bytes)
         if self._mac_tag_bytes < 1:
@@ -108,17 +106,11 @@ class MacThenEncryptService:
             msg = payload[:-digest_len]
             tag = payload[-digest_len:]
         else:
+            # Keep behavior explicit for malformed payloads shorter than a tag.
             msg = payload
             tag = b""
 
-        expected = self._expected_tag(msg)
+        expected = compute_mac_tag(self._mac_alg, self._mac_key, msg, self._mac_tag_bytes)
         if len(tag) != len(expected):
             return False
         return hmac.compare_digest(tag, expected)
-
-    def _expected_tag(self, msg: bytes) -> bytes:
-        """Compute expected tag and optionally repeat it to amplify timing gap."""
-        expected = b""
-        for _ in range(self._timing_work_factor):
-            expected = compute_mac_tag(self._mac_alg, self._mac_key, msg, self._mac_tag_bytes)
-        return expected

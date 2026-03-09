@@ -8,8 +8,9 @@ import time
 
 from . import utils
 
+_SIGMA_SPREAD = 3.0             # 3σ
 _SPIN_GUARD_NS = 50_000
-_SLEEP_COARSE_NS = 2_000_000  # 2 ms
+_SLEEP_COARSE_NS = 2_000_000    # 2 ms
 
 
 def serve_proxy(listen_addr: str, target_addr: str, jitter_s: float) -> None:
@@ -82,7 +83,7 @@ def _delay(rng: random.Random, jitter_s: float) -> None:
     if jitter_s <= 0:
         return
 
-    sigma = jitter_s / 3.0
+    sigma = jitter_s / _SIGMA_SPREAD
     if sigma <= 0:
         return
     while True:

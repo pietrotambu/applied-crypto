@@ -74,7 +74,6 @@ class UtilsTests(unittest.TestCase):
             addr="127.0.0.1:4000",
             enc_key=b"\x01\x02",
             mac_key=b"\xaa\xbb",
-            timing_work_factor=3,
             mac_alg="shake256",
             mac_tag_bytes=64,
         )
@@ -88,8 +87,6 @@ class UtilsTests(unittest.TestCase):
                 "0102",
                 "--mac-key",
                 "aabb",
-                "--timing-work-factor",
-                "3",
                 "--mac-alg",
                 "shake256",
                 "--mac-tag-bytes",

@@ -86,10 +86,12 @@ def recover_block_timing(
     for pos in range(crypto.BLOCK_SIZE - 1, -1, -1):
         pad = crypto.BLOCK_SIZE - pos
         base = bytearray(prev)
+        # Keep solved suffix bytes consistent with the target padding value.
         for j in range(crypto.BLOCK_SIZE - 1, pos, -1):
             base[j] = intermediate[j] ^ pad
 
         scores: list[Score] = []
+        # Coarse pass: evaluate every possible byte guess with few samples.
         for guess in range(256):
             candidate_prev = bytearray(base)
             candidate_prev[pos] = guess
@@ -110,6 +112,7 @@ def recover_block_timing(
         scores.sort(key=lambda s: s.avg(), reverse=True)
         limit = min(cfg.top_candidates, len(scores))
 
+        # Spend extra samples only on the most promising candidates.
         for i in range(limit):
             extra, extra_sq = _sample_stats_ns(oracle, scores[i].forged, cfg.refine_samples)
             queries += cfg.refine_samples
@@ -117,6 +120,8 @@ def recover_block_timing(
             scores[i].total_sq += extra_sq
             scores[i].samples += cfg.refine_samples
 
+        # Adaptive refinement: keep sampling until top-1 vs top-2 is separated,
+        # or until the round budget is exhausted.
         for _ in range(_ADAPTIVE_REFINE_ROUNDS):
             scores.sort(key=lambda s: s.avg(), reverse=True)
             ranked = scores[:limit]
@@ -234,6 +239,7 @@ def _is_confident(best: Score, second: Score) -> bool:
     if gap <= 0:
         return False
 
+    # Standard error of the difference of means (independent-sample approximation).
     se = math.sqrt((best.variance() / best.samples) + (second.variance() / second.samples))
     if se <= 0:
         return True
@@ -254,6 +260,7 @@ def _resolve_last_byte_ambiguity(
 
     for candidate in candidates:
         probe = bytearray(candidate.forged)
+        # Toggle a neighbor byte: true pad=1 guesses tend to keep longer timings.
         probe[probe_pos] ^= 0x01
         total = _sample_duration_ns(oracle, bytes(probe), probe_samples)
         queries += probe_samples

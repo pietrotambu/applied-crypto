@@ -75,6 +75,7 @@ def _tamper_padding(ciphertext: bytes) -> bytes:
 
 def _ensure_invalid_padding(client: protocol.Client, enc_key: bytes, base_ct: bytes) -> bytes:
     """Find a ciphertext rejected due to invalid padding."""
+    # Fast path: a fixed bit flip usually breaks last-block padding immediately.
     candidate = _tamper_padding(base_ct)
     if not _padding_valid_local(enc_key, candidate):
         ok, _ = client.check(candidate)
@@ -85,6 +86,7 @@ def _ensure_invalid_padding(client: protocol.Client, enc_key: bytes, base_ct: by
     if not ok and not _padding_valid_local(enc_key, candidate):
         return candidate
 
+    # Fallback scan: try different masks until we get a stable invalid-padding sample.
     pad_pos = len(base_ct) - crypto.BLOCK_SIZE - 1
     for mask in range(2, 256):
         out = bytearray(base_ct)
@@ -117,6 +119,8 @@ def _ensure_valid_padding_mac_fail(
     if len(base_ct) < 2 * crypto.BLOCK_SIZE:
         raise ValueError("ciphertext too short")
 
+    # We mutate one byte in C_{n-1}; for some masks padding remains valid while
+    # the plaintext/MAC content changes, which forces the longer MAC-check path.
     pad_pos = len(base_ct) - crypto.BLOCK_SIZE - 1
     for mask in range(1, 256):
         out = bytearray(base_ct)
@@ -192,7 +196,9 @@ def main() -> None:
 
         with protocol.Client(proxy_addr, timeout=2.0) as client:
             ciphertext = client.encrypt(msg)
+            # long_path_ct: valid padding, MAC check executed (but fails).
             long_path_ct = _ensure_valid_padding_mac_fail(client, enc_key, ciphertext)
+            # short_path_ct: padding fails early, so MAC check is skipped.
             short_path_ct = _ensure_invalid_padding(client, enc_key, ciphertext)
 
             ok_long, _ = client.check(long_path_ct)
