@@ -17,8 +17,6 @@ use external setup (for example two machines on a LAN, or Linux `tc netem`).
 - `padding_oracle/process.py`: subprocess/socket helpers for orchestration.
 - `padding_oracle/cli.py`: command entrypoints for `server`/`victim`, `attacker`, `boolean`, and `timing`.
 - `padding_oracle/timing_stats.py`: long-path vs short-path timing separation utility.
-- `scripts/task4_baseline.sh`: baseline Task 4 run script.
-- `scripts/task4_netem_lo_sweep.sh`: loopback netem sweep script for Task 4.
 - `tests/`: unit tests.
 
 ## Quickstart (Make-first)
@@ -110,25 +108,6 @@ Run all unit tests:
 ```bash
 make test
 ```
-
-## Task 4 Runs (No Internal Jitter)
-
-There is no `task4` CLI subcommand. Task 4 is handled by running repeated `timing`
-executions under different external network conditions.
-
-Use helper scripts:
-```bash
-./scripts/task4_baseline.sh
-./scripts/task4_netem_lo_sweep.sh
-```
-
-Optional tuning:
-```bash
-TRIALS=5 MESSAGE_KB=2 ./scripts/task4_baseline.sh
-TRIALS=5 MESSAGE_KB=2 ./scripts/task4_netem_lo_sweep.sh
-```
-
-`task4_netem_lo_sweep.sh` applies noise externally on loopback via `tc netem` and executes repeated `timing` runs per profile.
 
 ## Timing Statistics
 
