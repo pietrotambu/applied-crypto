@@ -47,18 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_task3 = sub.add_parser("task3", help="timing-oracle attack over localhost processes")
     p_task3.add_argument("--message")
     p_task3.add_argument("--message-kb", type=float)
-    p_task3.add_argument("--initial-samples", type=int, default=4)
-    p_task3.add_argument("--refine-samples", type=int, default=12)
-    p_task3.add_argument("--top-k", type=int, default=12)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
     p_task4.add_argument("--message")
     p_task4.add_argument("--message-kb", type=float)
     p_task4.add_argument("--trials", type=int, default=3)
     p_task4.add_argument("--jitters-ms", default="0,0.005,0.01,0.015")
-    p_task4.add_argument("--initial-samples", type=int, default=4)
-    p_task4.add_argument("--refine-samples", type=int, default=12)
-    p_task4.add_argument("--top-k", type=int, default=12)
     return parser
 
 
@@ -120,7 +114,7 @@ def run_task3(args: argparse.Namespace) -> None:
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
     msg, message_mode, message_kb = _resolve_message_bytes(args.message, args.message_kb)
-    cfg = _timing_config_from_args(args)
+    cfg = _timing_config()
 
     server_addr = process.free_local_addr()
     server_proc = _start_server(server_addr, enc_key, mac_key)
@@ -177,7 +171,7 @@ def run_task4(args: argparse.Namespace) -> None:
     enc_key = crypto.random_bytes(32)
     mac_key = crypto.random_bytes(32)
     base_message, message_mode, message_kb = _resolve_message_bytes(args.message, args.message_kb)
-    cfg = _timing_config_from_args(args)
+    cfg = _timing_config()
 
     server_addr = process.free_local_addr()
     server_proc = _start_server(server_addr, enc_key, mac_key)
@@ -195,8 +189,11 @@ def run_task4(args: argparse.Namespace) -> None:
             CONSOLE.kv("message_mode", f"random message_kb={message_kb}")
         CONSOLE.kv("target_mode", "single_block auto (last_or_second_last_if_full_padding)")
         CONSOLE.kv(
-            "sampling",
-            f"initial={cfg.initial_samples}, refine={cfg.refine_samples}, top_k={cfg.top_candidates}",
+            "confidence",
+            (
+                f"z>={cfg.confidence_z:.2f}, min_samples={cfg.min_compare_samples}, "
+                f"max_queries_per_byte={cfg.max_queries_per_byte}"
+            ),
         )
         print(
             f"{CONSOLE.bold('jitter_ms'):>9} "
@@ -213,7 +210,6 @@ def run_task4(args: argparse.Namespace) -> None:
                 base_message=base_message,
                 server_addr=server_addr,
                 mac_key=mac_key,
-                args=args,
                 cfg=cfg,
             )
 
@@ -280,12 +276,15 @@ def _parse_jitter_values(raw_jitters: str) -> list[float]:
     return jitters_ms
 
 
-def _timing_config_from_args(args: argparse.Namespace) -> attacks.TimingConfig:
-    """Create timing attack config from CLI namespace values."""
+def _timing_config() -> attacks.TimingConfig:
+    """Create internal timing attack configuration (auto mode)."""
     return attacks.TimingConfig(
-        initial_samples=args.initial_samples,
-        refine_samples=args.refine_samples,
-        top_candidates=args.top_k,
+        initial_samples=2,
+        refine_samples=2,
+        top_candidates=8,
+        confidence_z=2.5,
+        min_compare_samples=10,
+        max_queries_per_byte=100_000,
     )
 
 
@@ -322,7 +321,6 @@ def _run_single_trial(
     client: protocol.Client,
     message: bytes,
     mac_key: bytes,
-    args: argparse.Namespace,
     cfg: attacks.TimingConfig,
 ) -> tuple[bool, int, float]:
     """Run one task4 trial and return `(success, queries, elapsed_ms)`."""
@@ -351,7 +349,6 @@ def _run_jitter_trials(
     base_message: bytes,
     server_addr: str,
     mac_key: bytes,
-    args: argparse.Namespace,
     cfg: attacks.TimingConfig,
 ) -> TrialAggregate:
     """Run all trials for one jitter value and return aggregate metrics."""
@@ -382,20 +379,18 @@ def _run_jitter_trials(
                         client=client,
                         message=base_message,
                         mac_key=mac_key,
-                        args=args,
                         cfg=cfg,
                     )
             except Exception as exc:
                 aggregate.error_trials += 1
                 aggregate.last_error = exc
-                continue
-
-            # Completed trials contribute to averages; failed trials are counted separately.
-            aggregate.completed_trials += 1
-            aggregate.total_queries += queries
-            aggregate.total_elapsed_ms += elapsed_ms
-            if success:
-                aggregate.success += 1
+            else:
+                # Completed trials contribute to averages; failed trials are counted separately.
+                aggregate.completed_trials += 1
+                aggregate.total_queries += queries
+                aggregate.total_elapsed_ms += elapsed_ms
+                if success:
+                    aggregate.success += 1
     finally:
         process.stop_process(proxy_proc)
 

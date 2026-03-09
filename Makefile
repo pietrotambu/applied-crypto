@@ -17,7 +17,7 @@ help:
 	@echo "  task2             Run task2 demo (use ARGS for options)"
 	@echo "  task3             Run task3 demo (use ARGS for options)"
 	@echo "  task4             Run task4 benchmark (use ARGS for options)"
-	@echo "  timing-stats      Analyze long/short journey timing stats (use ARGS for options)"
+	@echo "  timing-stats      Analyze timing path separation stats (use ARGS for options)"
 	@echo "  test              Run unit tests"
 
 $(PYTHON):
