@@ -1,7 +1,7 @@
 """Timing-oracle padding attack utilities.
 
-The attack ranks byte guesses by response time and adaptively refines the most
-promising candidates until the best guess is statistically separated.
+This implementation keeps the original strong attack behavior, but factors the
+refinement logic into shared helpers so the flow stays compact and readable.
 """
 
 from dataclasses import dataclass
@@ -54,9 +54,7 @@ class Score:
             return 0.0
         mean = self.avg()
         var = (self.total_sq - (self.samples * mean * mean)) / (self.samples - 1)
-        if var <= 0:
-            return 0.0
-        return var
+        return var if var > 0.0 else 0.0
 
 
 def recover_block_timing(
@@ -66,17 +64,9 @@ def recover_block_timing(
     config: TimingConfig,
     prefix: bytes = b"",
 ) -> tuple[bytes, int]:
-    """Recover one plaintext block from timing leakage.
-
-    Args:
-        prev: Previous block (or IV).
-        curr: Target ciphertext block.
-        oracle: Callable returning timing (ns-like scalar) for one ciphertext.
-        config: Sampling strategy.
-        prefix: Optional untouched prefix blocks required by the oracle context.
-    """
-
+    """Recover one plaintext block from timing leakage."""
     cfg = config.normalized()
+
     if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
         raise AttackError("recover_block_timing requires two 16-byte blocks")
     if len(prefix) % crypto.BLOCK_SIZE != 0:
@@ -91,17 +81,15 @@ def recover_block_timing(
         pad = crypto.BLOCK_SIZE - pos
         base = bytearray(prev)
         byte_queries = 0
-        # Keep solved suffix bytes consistent with the target padding value.
+
         for j in range(crypto.BLOCK_SIZE - 1, pos, -1):
             base[j] = intermediate[j] ^ pad
 
         scores: list[Score] = []
-        # Coarse pass: evaluate every possible byte guess with few samples.
         for guess in range(256):
             candidate_prev = bytearray(base)
             candidate_prev[pos] = guess
             forged = prefix_bytes + bytes(candidate_prev) + curr
-
             total, total_sq = _sample_stats_ns(oracle, forged, cfg.initial_samples)
             queries += cfg.initial_samples
             byte_queries += cfg.initial_samples
@@ -116,70 +104,50 @@ def recover_block_timing(
             )
 
         scores.sort(key=lambda s: s.avg(), reverse=True)
-        limit = min(cfg.top_candidates, len(scores))
+        ranked = scores[: min(cfg.top_candidates, len(scores))]
 
-        # Spend extra samples only on the most promising candidates.
-        for i in range(limit):
-            if byte_queries >= cfg.max_queries_per_byte:
-                break
-            extra_samples = min(cfg.refine_samples, cfg.max_queries_per_byte - byte_queries)
-            if extra_samples <= 0:
-                break
-            extra, extra_sq = _sample_stats_ns(oracle, scores[i].forged, extra_samples)
-            queries += extra_samples
-            byte_queries += extra_samples
-            scores[i].total += extra
-            scores[i].total_sq += extra_sq
-            scores[i].samples += extra_samples
+        # One quick refinement pass over top-k before adaptive checks.
+        consumed = _refine_round(
+            ranked,
+            oracle,
+            refine_samples=cfg.refine_samples,
+            remaining_budget=cfg.max_queries_per_byte - byte_queries,
+        )
+        queries += consumed
+        byte_queries += consumed
 
-        # Adaptive refinement: keep sampling until top-1 vs top-2 is separated.
+        # Refine top-k until top-1 beats top-2 with confidence or budget ends.
+        consumed = _refine_until_confident(
+            ranked,
+            oracle,
+            cfg,
+            remaining_budget=cfg.max_queries_per_byte - byte_queries,
+        )
+        queries += consumed
+        byte_queries += consumed
+
+        # Final focused refinement on current top-2 only, re-evaluated each round.
         while byte_queries < cfg.max_queries_per_byte:
-            scores.sort(key=lambda s: s.avg(), reverse=True)
-            ranked = scores[:limit]
-            if len(ranked) < 2:
+            ranked.sort(key=lambda s: s.avg(), reverse=True)
+            contenders = ranked[:2]
+            if len(contenders) < 2:
                 break
-            if _is_confident(ranked[0], ranked[1], cfg):
+            if _is_confident(contenders[0], contenders[1], cfg):
                 break
-            for candidate in ranked:
-                if byte_queries >= cfg.max_queries_per_byte:
-                    break
-                extra_samples = min(cfg.refine_samples, cfg.max_queries_per_byte - byte_queries)
-                if extra_samples <= 0:
-                    break
-                extra, extra_sq = _sample_stats_ns(oracle, candidate.forged, extra_samples)
-                queries += extra_samples
-                byte_queries += extra_samples
-                candidate.total += extra
-                candidate.total_sq += extra_sq
-                candidate.samples += extra_samples
+            consumed = _refine_round(
+                contenders,
+                oracle,
+                refine_samples=cfg.refine_samples,
+                remaining_budget=cfg.max_queries_per_byte - byte_queries,
+            )
+            queries += consumed
+            byte_queries += consumed
+            if consumed == 0:
+                break
 
-        # Final head-to-head phase on top-2 only for stronger confidence.
-        while byte_queries < cfg.max_queries_per_byte:
-            scores.sort(key=lambda s: s.avg(), reverse=True)
-            ranked = scores[:2]
-            if len(ranked) < 2:
-                break
-            if _is_confident(ranked[0], ranked[1], cfg):
-                break
-            for candidate in ranked:
-                if byte_queries >= cfg.max_queries_per_byte:
-                    break
-                extra_samples = min(cfg.refine_samples, cfg.max_queries_per_byte - byte_queries)
-                if extra_samples <= 0:
-                    break
-                extra, extra_sq = _sample_stats_ns(oracle, candidate.forged, extra_samples)
-                queries += extra_samples
-                byte_queries += extra_samples
-                candidate.total += extra
-                candidate.total_sq += extra_sq
-                candidate.samples += extra_samples
-
-        scores.sort(key=lambda s: s.avg(), reverse=True)
-        ranked = scores[:limit]
+        ranked.sort(key=lambda s: s.avg(), reverse=True)
         best_guess = ranked[0].guess
 
-        # With pad=1 there can be two viable candidates when the target block is
-        # full padding (0x10 repeated). A second probe disambiguates them.
         if pos == crypto.BLOCK_SIZE - 1 and len(ranked) > 1:
             remaining = cfg.max_queries_per_byte - byte_queries
             if remaining >= len(ranked):
@@ -206,10 +174,7 @@ def recover_ciphertext_block_timing(
     oracle: TimingOracle,
     config: TimingConfig,
 ) -> tuple[bytes, int]:
-    """Recover one plaintext block from a full ciphertext by index.
-
-    `block_index` is 1-based over decrypted payload blocks (0 is the IV).
-    """
+    """Recover one plaintext block from a full ciphertext by index."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
         raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
 
@@ -237,13 +202,10 @@ def recover_plaintext_timing(
         raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
 
     num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
-    # Hard-coded traversal: recover from the last ciphertext block to the first.
-    indices = range(num_blocks - 1, 0, -1)
-
     recovered_blocks: dict[int, bytes] = {}
     total_queries = 0
 
-    for block_index in indices:
+    for block_index in range(num_blocks - 1, 0, -1):
         block, queries = recover_ciphertext_block_timing(
             ciphertext,
             block_index,
@@ -276,6 +238,55 @@ def _sample_stats_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> t
     return total, total_sq
 
 
+def _refine_round(
+    candidates: list[Score],
+    oracle: TimingOracle,
+    refine_samples: int,
+    remaining_budget: int,
+) -> int:
+    """Add one refinement round across candidates and return consumed queries."""
+    consumed = 0
+    for candidate in candidates:
+        left = remaining_budget - consumed
+        if left <= 0:
+            break
+        samples = min(refine_samples, left)
+        if samples <= 0:
+            break
+        extra, extra_sq = _sample_stats_ns(oracle, candidate.forged, samples)
+        candidate.total += extra
+        candidate.total_sq += extra_sq
+        candidate.samples += samples
+        consumed += samples
+    return consumed
+
+
+def _refine_until_confident(
+    candidates: list[Score],
+    oracle: TimingOracle,
+    cfg: TimingConfig,
+    remaining_budget: int,
+) -> int:
+    """Refine candidates until top-1 is confident over top-2 or budget runs out."""
+    consumed = 0
+    while consumed < remaining_budget:
+        candidates.sort(key=lambda s: s.avg(), reverse=True)
+        if len(candidates) < 2:
+            break
+        if _is_confident(candidates[0], candidates[1], cfg):
+            break
+        added = _refine_round(
+            candidates,
+            oracle,
+            refine_samples=cfg.refine_samples,
+            remaining_budget=remaining_budget - consumed,
+        )
+        consumed += added
+        if added == 0:
+            break
+    return consumed
+
+
 def _is_confident(best: Score, second: Score, cfg: TimingConfig) -> bool:
     """Test whether top candidate is separated by a Z-score-like margin."""
     if best.samples < cfg.min_compare_samples or second.samples < cfg.min_compare_samples:
@@ -283,8 +294,6 @@ def _is_confident(best: Score, second: Score, cfg: TimingConfig) -> bool:
     gap = best.avg() - second.avg()
     if gap <= 0:
         return False
-
-    # Standard error of the difference of means (independent-sample approximation).
     se = math.sqrt((best.variance() / best.samples) + (second.variance() / second.samples))
     if se <= 0:
         return True
@@ -305,7 +314,6 @@ def _resolve_last_byte_ambiguity(
 
     for candidate in candidates:
         probe = bytearray(candidate.forged)
-        # Toggle a neighbor byte: true pad=1 guesses tend to keep longer timings.
         probe[probe_pos] ^= 0x01
         total = _sample_duration_ns(oracle, bytes(probe), probe_samples)
         queries += probe_samples

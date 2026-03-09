@@ -160,7 +160,7 @@ def _resolve_message_bytes(
 
 
 def _timing_config() -> attacks.TimingConfig:
-    """Create internal timing attack configuration (auto mode)."""
+    """Create internal timing attack configuration."""
     return attacks.TimingConfig(
         initial_samples=2,
         refine_samples=2,

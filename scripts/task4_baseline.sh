@@ -24,7 +24,6 @@ successes=0
 for trial in $(seq 1 "$TRIALS"); do
   echo "[task4 baseline] trial $trial/$TRIALS"
   output="$("$PYTHON_BIN" -m padding_oracle.cli timing --message-kb "$MESSAGE_KB")"
-  printf "%s\n" "$output"
   if grep -q "success: YES" <<<"$output"; then
     successes=$((successes + 1))
   fi
