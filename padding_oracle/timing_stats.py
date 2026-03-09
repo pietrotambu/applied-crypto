@@ -7,6 +7,7 @@ import statistics
 from dataclasses import dataclass
 
 from . import crypto, process, protocol, utils
+from .console import CONSOLE
 
 
 @dataclass(frozen=True)
@@ -155,7 +156,7 @@ def main() -> None:
 
     if args.message is not None:
         if args.message_kb is not None:
-            print("warning: --message-kb is ignored because --message was provided")
+            CONSOLE.warn("--message-kb is ignored because --message was provided")
         msg = args.message.encode("utf-8")
         message_mode = "literal"
         message_kb = None
@@ -185,6 +186,8 @@ def main() -> None:
             jitter_ms=args.jitter_ms,
         )
     )
+    CONSOLE.section("Timing Stats - Path Separation")
+    CONSOLE.kv("status", "starting execution...")
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
@@ -221,22 +224,19 @@ def main() -> None:
         short_stats = _summarize(short_samples)
         delta_avg_ms = long_stats.avg_ms - short_stats.avg_ms
 
-        print(
-            "flow4 path timing stats "
-            f"(trials={args.trials}, warmup={args.warmup}, "
-            f"jitter_ms={args.jitter_ms:.6f}, "
-            f"{'message_kb=' + str(message_kb) if message_mode == 'random' else 'message=literal'})"
+        CONSOLE.kv("trials", args.trials)
+        CONSOLE.kv("warmup", args.warmup)
+        CONSOLE.kv("jitter_ms", f"{args.jitter_ms:.6f}")
+        if message_mode == "random":
+            CONSOLE.kv("message_mode", f"random message_kb={message_kb}")
+        else:
+            CONSOLE.kv("message_mode", "literal")
+
+        CONSOLE.kv(
+            "delta_avg_ms (long-short)",
+            f"{delta_avg_ms:.6f} ({delta_avg_ms * 1000:.2f} μs)",
         )
-        print("path min_ms avg_ms max_ms")
-        print(
-            f"long_journey "
-            f"{long_stats.min_ms:.6f} {long_stats.avg_ms:.6f} {long_stats.max_ms:.6f}"
-        )
-        print(
-            f"short_journey "
-            f"{short_stats.min_ms:.6f} {short_stats.avg_ms:.6f} {short_stats.max_ms:.6f}"
-        )
-        print(f"delta_avg_ms(long-short) {delta_avg_ms:.6f}")
+        CONSOLE.kv("signal", CONSOLE.delta_label(delta_avg_ms))
     finally:
         process.stop_process(proxy_proc)
         process.stop_process(server_proc)

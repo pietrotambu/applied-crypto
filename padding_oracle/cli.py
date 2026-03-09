@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import time
 from dataclasses import dataclass
 from typing import Callable
 
 from . import attacks, crypto, process, protocol, proxy, services, utils
+from .console import CONSOLE
 
 
 @dataclass
@@ -107,12 +107,12 @@ def run_task2(args: argparse.Namespace) -> None:
     recovered, queries = attacks.recover_plaintext_boolean(ciphertext, service.padding_oracle)
     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
-    print("task2: basic boolean padding-oracle attack")
-    print(f"ciphertext (base64): {base64.b64encode(ciphertext).decode()}")
-    print(f"queries: {queries}")
-    print(f"elapsed_ms: {elapsed_ms:.2f}")
-    print(f"recovered: {recovered.decode(errors='replace')!r}")
-    print(f"success: {recovered == message}")
+    ok = recovered == message
+    CONSOLE.section("Task 2 - Boolean Padding Oracle")
+    CONSOLE.kv("queries", queries)
+    CONSOLE.kv("elapsed_ms", f"{elapsed_ms:.2f}")
+    CONSOLE.kv("recovered", repr(recovered.decode(errors="replace")))
+    CONSOLE.kv("success", CONSOLE.ok_label(ok))
 
 
 def run_task3(args: argparse.Namespace) -> None:
@@ -123,7 +123,9 @@ def run_task3(args: argparse.Namespace) -> None:
     cfg = _timing_config_from_args(args)
 
     server_addr = process.free_local_addr()
-    server_proc = _start_server(server_addr, enc_key, mac_key, args)
+    server_proc = _start_server(server_addr, enc_key, mac_key)
+    CONSOLE.section("Task 3 - Timing Oracle Attack")
+    CONSOLE.kv("status", "starting execution...")
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
@@ -147,19 +149,20 @@ def run_task3(args: argparse.Namespace) -> None:
                 target_block_index,
             )
 
-            print("task3: timing oracle attack over localhost process boundary")
-            print(f"server: {server_addr}")
+            ok = recovered == expected
+            CONSOLE.kv("server", server_addr)
             if message_mode == "literal":
-                print("message_mode: literal")
+                CONSOLE.kv("message_mode", "literal")
             else:
-                print(f"message_mode: random message_kb={message_kb}")
-            print(f"message_bytes: {len(msg)}")
-            print(f"target: {target_name} (block_index={target_block_index})")
-            print(f"queries: {queries}")
-            print(f"elapsed_ms: {elapsed_ms:.2f}")
-            print(f"recovered_hex: {recovered.hex()}")
-            print(f"expected_hex:  {expected.hex()}")
-            print(f"success: {recovered == expected}")
+                CONSOLE.kv("message_mode", f"random message_kb={message_kb}")
+            CONSOLE.kv("message_bytes", len(msg))
+            CONSOLE.kv("target", f"{target_name} (block_index={target_block_index})")
+            CONSOLE.kv("queries", queries)
+            CONSOLE.kv("elapsed_ms", f"{elapsed_ms:.2f}")
+            CONSOLE.kv("recovered_hex", recovered.hex())
+            if not ok:
+                CONSOLE.kv("expected_hex", expected.hex())
+            CONSOLE.kv("success", CONSOLE.ok_label(ok))
     finally:
         process.stop_process(server_proc)
 
@@ -177,21 +180,30 @@ def run_task4(args: argparse.Namespace) -> None:
     cfg = _timing_config_from_args(args)
 
     server_addr = process.free_local_addr()
-    server_proc = _start_server(server_addr, enc_key, mac_key, args)
+    server_proc = _start_server(server_addr, enc_key, mac_key)
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
 
-        print("task4: timing-attack robustness under injected localhost noise")
-        print(f"server={server_addr} trials={args.trials}")
+        CONSOLE.section("Task 4 - Timing Robustness Sweep")
+        CONSOLE.kv("server", server_addr)
+        CONSOLE.kv("trials_per_jitter", args.trials)
+
         if message_mode == "literal":
-            print(f"message_mode=literal message_bytes={len(base_message)}")
+            CONSOLE.kv("message_mode", f"literal message_bytes={len(base_message)}")
         else:
-            print(f"message_mode=random message_kb={message_kb}")
-        print("mode=single_block target=auto(last_or_second_last_if_full_padding)")
+            CONSOLE.kv("message_mode", f"random message_kb={message_kb}")
+        CONSOLE.kv("target_mode", "single_block auto (last_or_second_last_if_full_padding)")
+        CONSOLE.kv(
+            "sampling",
+            f"initial={cfg.initial_samples}, refine={cfg.refine_samples}, top_k={cfg.top_candidates}",
+        )
         print(
-            "jitter_ms success_rate avg_queries avg_elapsed_ms "
-            "completed_trials error_trials successes total_trials"
+            f"{CONSOLE.bold('jitter_ms'):>9} "
+            f"{CONSOLE.bold('success'):>8} "
+            f"{CONSOLE.bold('avg_queries'):>12} "
+            f"{CONSOLE.bold('avg_elapsed_ms'):>14} "
+            f"{CONSOLE.bold('status'):>8}"
         )
 
         for jitter_ms in jitters_ms:
@@ -212,12 +224,16 @@ def run_task4(args: argparse.Namespace) -> None:
             else:
                 avg_queries = float("nan")
                 avg_elapsed_ms = float("nan")
+            status = CONSOLE.row_status(success_rate, aggregate.error_trials)
             print(
-                f"{jitter_ms:.6f} {success_rate:.5f} {avg_queries:.1f} {avg_elapsed_ms:.2f} "
-                f"{aggregate.completed_trials} {aggregate.error_trials} {aggregate.success} {args.trials}"
+                f"{jitter_ms:9.6f} "
+                f"{success_rate:8.5f} "
+                f"{avg_queries:12.1f} "
+                f"{avg_elapsed_ms:14.2f} "
+                f"{status:>8}"
             )
             if aggregate.error_trials > 0:
-                print(
+                CONSOLE.warn(
                     f"note: jitter_ms={jitter_ms:.6f} had {aggregate.error_trials}/{args.trials} "
                     f"trial errors (last_error="
                     f"{type(aggregate.last_error).__name__ if aggregate.last_error else 'unknown'})"
@@ -230,7 +246,6 @@ def _start_server(
     server_addr: str,
     enc_key: bytes,
     mac_key: bytes,
-    args: argparse.Namespace,
 ):
     """Spawn the task server process with arguments from the current command."""
     return process.start_self_process(
@@ -249,7 +264,7 @@ def _resolve_message_bytes(
     """Resolve message inputs into bytes and a `(mode, message_kb)` descriptor."""
     if message is not None:
         if message_kb is not None:
-            print("warning: --message-kb is ignored because --message was provided")
+            CONSOLE.warn("--message-kb is ignored because --message was provided")
         return message.encode("utf-8"), "literal", None
 
     selected_kb = 1.0 if message_kb is None else message_kb
