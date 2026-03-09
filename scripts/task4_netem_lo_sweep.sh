@@ -64,7 +64,7 @@ run_trials() {
     fi
   done
 
-  rate="$(awk "BEGIN {printf \"%.5f\", $successes / $TRIALS}")"
+  rate="$(awk -v s="$successes" -v t="$TRIALS" 'BEGIN { printf "%.5f", s / t }')"
   echo "[$label] success=$successes/$TRIALS rate=$rate"
 }
 

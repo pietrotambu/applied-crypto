@@ -29,5 +29,5 @@ for trial in $(seq 1 "$TRIALS"); do
   fi
 done
 
-rate="$(awk "BEGIN {printf \"%.5f\", $successes / $TRIALS}")"
+rate="$(awk -v s="$successes" -v t="$TRIALS" 'BEGIN { printf "%.5f", s / t }')"
 echo "[task4 baseline] success=$successes/$TRIALS rate=$rate"
