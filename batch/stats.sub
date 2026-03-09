@@ -20,4 +20,4 @@
 # ----------------------- JOB DEFINITION --------------------- #
 
 
-./.venv/bin/python3.12 -m padding_oracle.timing_stats --trials 100000 --warmup 500 --jitter-ms 0
+./.venv/bin/python3.12 -m padding_oracle.timing_stats --trials 50000 --warmup 500 --jitter-ms 0 --message-kb 16

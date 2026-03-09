@@ -20,5 +20,5 @@
 # ----------------------- JOB DEFINITION --------------------- #
 
 
-./.venv/bin/python3.12 -m padding_oracle.cli task3 --initial-samples 4 --refine-samples 8 --top-k 8
+./.venv/bin/python3.12 -m padding_oracle.cli task3 --message-kb 16
 

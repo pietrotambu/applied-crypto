@@ -12,12 +12,11 @@
 
 #BSUB -R "select[model == XeonE5_2650v4] span[hosts=1]"
 
-#BSUB -W 04:00
+#BSUB -W 16:00
 
 #BSUB -o ./batch/task4_%J.out
 #BSUB -e ./batch/task4_%J.err
 
 # ----------------------- JOB DEFINITION --------------------- #
 
-
-./.venv/bin/python3.12 -m padding_oracle.cli task4 --initial-samples 4 --refine-samples 8 --top-k 8 --trials 50 --jitters-ms "0,0.005,0.01,0.015"
+./.venv/bin/python3.12 -m padding_oracle.cli task4 --trials 10 --jitters-ms "0,0.01,0.05,0.1,0.5,1,5" --message-kb 16
