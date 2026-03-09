@@ -67,11 +67,6 @@ Run task 3 with a fixed plaintext:
 make task3 ARGS="--message 'hello world'"
 ```
 
-Try sponge-based MAC mode with SHAKE256:
-```bash
-make task3 ARGS='--message-kb 16 --mac-alg shake256 --mac-tag-bytes 64'
-```
-
 Run a fully custom CLI command:
 ```bash
 make run COMMAND='task4 --trials 3 --jitters-ms 0,0.01,0.02'
@@ -101,11 +96,6 @@ Interpretation:
 Run task 4 benchmark with configurable jitter levels (milliseconds, decimals allowed):
 ```bash
 make task4 ARGS='--trials 3 --jitters-ms 1,2,3,4 --message-kb 1'
-```
-
-Compare SHA-256 vs SHAKE256 MAC:
-```bash
-make task4 ARGS='--trials 10 --jitters-ms 0,0.01,0.05 --message-kb 16 --mac-alg shake256 --mac-tag-bytes 64'
 ```
 
 Recommended robust settings for sub-millisecond jitter:
@@ -148,11 +138,6 @@ Use a fixed message instead of random-by-size:
 make timing-stats ARGS="--trials 10000 --warmup 500 --jitter-ms 0.01 --message 'hello world'"
 ```
 
-Try SHAKE256 MAC in timing stats:
-```bash
-make timing-stats ARGS='--trials 10000 --warmup 500 --jitter-ms 0.01 --message-kb 16 --mac-alg shake256 --mac-tag-bytes 64'
-```
-
 The report is intentionally simple and prints:
 - `long_journey`: padding valid, MAC computed (MAC-fail path)
 - `short_journey`: padding fails early, no MAC
@@ -160,4 +145,3 @@ The report is intentionally simple and prints:
 - `min_ms`, `avg_ms`, `max_ms` for each journey
 - `delta_avg_ms(long-short)` as the key signal
 - if both `--message` and `--message-kb` are provided, `--message` is used and a warning is printed.
-- `--mac-alg shake256` uses a custom HMAC-style SHAKE256 MAC (`--mac-tag-bytes` controls tag length).

@@ -69,13 +69,11 @@ class UtilsTests(unittest.TestCase):
             ],
         )
 
-    def test_server_command_args_with_mac_options(self) -> None:
+    def test_server_command_args_is_minimal(self) -> None:
         args = utils.server_command_args(
             addr="127.0.0.1:4000",
             enc_key=b"\x01\x02",
             mac_key=b"\xaa\xbb",
-            mac_alg="shake256",
-            mac_tag_bytes=64,
         )
         self.assertEqual(
             args,
@@ -87,10 +85,6 @@ class UtilsTests(unittest.TestCase):
                 "0102",
                 "--mac-key",
                 "aabb",
-                "--mac-alg",
-                "shake256",
-                "--mac-tag-bytes",
-                "64",
             ],
         )
 
@@ -116,7 +110,6 @@ class UtilsTests(unittest.TestCase):
         block_index, name = utils.choose_single_block_target(
             ciphertext,
             msg_len=31,
-            mac_tag_bytes=32,
         )
         self.assertEqual(block_index, 4)
         self.assertEqual(name, "last_payload_block")
@@ -127,7 +120,6 @@ class UtilsTests(unittest.TestCase):
         block_index, name = utils.choose_single_block_target(
             ciphertext,
             msg_len=32,
-            mac_tag_bytes=32,
         )
         self.assertEqual(block_index, 3)
         self.assertEqual(name, "second_last_payload_block")

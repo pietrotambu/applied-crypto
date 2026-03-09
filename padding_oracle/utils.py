@@ -90,8 +90,6 @@ def server_command_args(
     addr: str,
     enc_key: bytes,
     mac_key: bytes,
-    mac_alg: str = "sha256",
-    mac_tag_bytes: int = 32,
 ) -> list[str]:
     """Construct CLI args for launching the vulnerable server process."""
     args = [
@@ -103,21 +101,15 @@ def server_command_args(
         "--mac-key",
         mac_key.hex(),
     ]
-    if mac_alg != "sha256":
-        args.extend(["--mac-alg", mac_alg])
-    if int(mac_tag_bytes) != 32:
-        args.extend(["--mac-tag-bytes", str(int(mac_tag_bytes))])
     return args
 
 
 def expected_payload_padded(
     msg: bytes,
     mac_key: bytes,
-    mac_alg: str = "sha256",
-    mac_tag_bytes: int = 32,
 ) -> bytes:
-    """Return `PKCS7(msg || tag)` for the configured MAC settings."""
-    tag = services.compute_mac_tag(mac_alg, mac_key, msg, mac_tag_bytes)
+    """Return `PKCS7(msg || HMAC-SHA256(msg))`."""
+    tag = services.compute_mac_tag(mac_key, msg)
     return crypto.pkcs7_pad(msg + tag, crypto.BLOCK_SIZE)
 
 
@@ -125,11 +117,9 @@ def expected_payload_block(
     msg: bytes,
     mac_key: bytes,
     block_index: int,
-    mac_alg: str = "sha256",
-    mac_tag_bytes: int = 32,
 ) -> bytes:
     """Return one 1-based block from the padded payload."""
-    payload = expected_payload_padded(msg, mac_key, mac_alg=mac_alg, mac_tag_bytes=mac_tag_bytes)
+    payload = expected_payload_padded(msg, mac_key)
     blocks = len(payload) // crypto.BLOCK_SIZE
     if block_index < 1 or block_index > blocks:
         raise ValueError(f"block index {block_index} out of range [1,{blocks}]")
@@ -140,19 +130,15 @@ def expected_payload_block(
 def choose_single_block_target(
     ciphertext: bytes,
     msg_len: int,
-    mac_tag_bytes: int,
 ) -> tuple[int, str]:
     """Pick attack target block while avoiding pure full-padding tail blocks."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
         raise ValueError("ciphertext must include IV and be a multiple of 16 bytes")
     if msg_len < 0:
         raise ValueError("msg_len must be >= 0")
-    if mac_tag_bytes < 1:
-        raise ValueError("mac_tag_bytes must be >= 1")
-
     num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
     last_block_index = num_blocks - 1
-    payload_len = msg_len + mac_tag_bytes
+    payload_len = msg_len + services.MAC_TAG_BYTES
 
     # If payload is already block-aligned, PKCS#7 appends a full 0x10 block.
     # Skip that pure-padding final block and target the previous block instead.

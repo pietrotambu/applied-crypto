@@ -35,8 +35,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_server.add_argument("--addr", default="127.0.0.1:4000")
     p_server.add_argument("--enc-key", required=True, help="hex AES key")
     p_server.add_argument("--mac-key", required=True, help="hex HMAC key")
-    p_server.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
-    p_server.add_argument("--mac-tag-bytes", type=int, default=32)
 
     p_proxy = sub.add_parser("proxy", help="run localhost delay/jitter proxy")
     p_proxy.add_argument("--listen", required=True)
@@ -52,8 +50,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_task3.add_argument("--initial-samples", type=int, default=4)
     p_task3.add_argument("--refine-samples", type=int, default=12)
     p_task3.add_argument("--top-k", type=int, default=12)
-    p_task3.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
-    p_task3.add_argument("--mac-tag-bytes", type=int, default=32)
 
     p_task4 = sub.add_parser("task4", help="benchmark timing attack under injected noise")
     p_task4.add_argument("--message")
@@ -63,8 +59,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_task4.add_argument("--initial-samples", type=int, default=4)
     p_task4.add_argument("--refine-samples", type=int, default=12)
     p_task4.add_argument("--top-k", type=int, default=12)
-    p_task4.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
-    p_task4.add_argument("--mac-tag-bytes", type=int, default=32)
     return parser
 
 
@@ -92,8 +86,6 @@ def run_server(args: argparse.Namespace) -> None:
     service = services.MacThenEncryptService(
         enc_key,
         mac_key,
-        mac_alg=args.mac_alg,
-        mac_tag_bytes=args.mac_tag_bytes,
     )
     protocol.serve(args.addr, service)
 
@@ -140,7 +132,6 @@ def run_task3(args: argparse.Namespace) -> None:
             target_block_index, target_name = utils.choose_single_block_target(
                 ciphertext,
                 msg_len=len(msg),
-                mac_tag_bytes=args.mac_tag_bytes,
             )
 
             recovered, queries, elapsed_ms = _recover_target_block(
@@ -154,14 +145,10 @@ def run_task3(args: argparse.Namespace) -> None:
                 msg,
                 mac_key,
                 target_block_index,
-                mac_alg=args.mac_alg,
-                mac_tag_bytes=args.mac_tag_bytes,
             )
 
             print("task3: timing oracle attack over localhost process boundary")
             print(f"server: {server_addr}")
-            print(f"mac_alg: {args.mac_alg}")
-            print(f"mac_tag_bytes: {args.mac_tag_bytes}")
             if message_mode == "literal":
                 print("message_mode: literal")
             else:
@@ -197,7 +184,6 @@ def run_task4(args: argparse.Namespace) -> None:
 
         print("task4: timing-attack robustness under injected localhost noise")
         print(f"server={server_addr} trials={args.trials}")
-        print(f"mac_alg={args.mac_alg} mac_tag_bytes={args.mac_tag_bytes}")
         if message_mode == "literal":
             print(f"message_mode=literal message_bytes={len(base_message)}")
         else:
@@ -252,8 +238,6 @@ def _start_server(
             server_addr,
             enc_key,
             mac_key,
-            mac_alg=args.mac_alg,
-            mac_tag_bytes=args.mac_tag_bytes,
         )
     )
 
@@ -331,14 +315,11 @@ def _run_single_trial(
     target_block_index, _ = utils.choose_single_block_target(
         ciphertext,
         msg_len=len(message),
-        mac_tag_bytes=args.mac_tag_bytes,
     )
     expected = utils.expected_payload_block(
         message,
         mac_key,
         target_block_index,
-        mac_alg=args.mac_alg,
-        mac_tag_bytes=args.mac_tag_bytes,
     )
     recovered, queries, elapsed_ms = _recover_target_block(
         client=client,

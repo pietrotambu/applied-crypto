@@ -144,8 +144,6 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=200, help="unreported warmup checks per path")
     parser.add_argument("--message", help="explicit plaintext to encrypt")
     parser.add_argument("--message-kb", type=float, help="random plaintext size in KB")
-    parser.add_argument("--mac-alg", choices=("sha256", "shake256"), default="sha256")
-    parser.add_argument("--mac-tag-bytes", type=int, default=32)
     parser.add_argument("--jitter-ms", type=float, default=0.0, help="proxy jitter")
     args = parser.parse_args()
 
@@ -176,8 +174,6 @@ def main() -> None:
             server_addr,
             enc_key,
             mac_key,
-            mac_alg=args.mac_alg,
-            mac_tag_bytes=args.mac_tag_bytes,
         )
     )
 
@@ -229,7 +225,6 @@ def main() -> None:
             "flow4 path timing stats "
             f"(trials={args.trials}, warmup={args.warmup}, "
             f"jitter_ms={args.jitter_ms:.6f}, "
-            f"mac_alg={args.mac_alg}, mac_tag_bytes={args.mac_tag_bytes}, "
             f"{'message_kb=' + str(message_kb) if message_mode == 'random' else 'message=literal'})"
         )
         print("path min_ms avg_ms max_ms")
