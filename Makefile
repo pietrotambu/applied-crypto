@@ -16,8 +16,6 @@ help:
 	@echo "  run               Run any CLI command. Example: make run COMMAND='boolean'"
 	@echo "  boolean           Run boolean-oracle demo (use ARGS for options)"
 	@echo "  timing            Run timing-oracle demo (use ARGS for options)"
-	@echo "  task4             Run task4 baseline script (TRIALS/MESSAGE_KB env vars)"
-	@echo "  task4-netem       Run task4 loopback netem sweep script"
 	@echo "  timing-stats      Analyze timing path separation stats (use ARGS for options)"
 	@echo "  test              Run unit tests"
 
@@ -47,12 +45,6 @@ boolean: $(PYTHON)
 
 timing: $(PYTHON)
 	$(CLI) timing $(ARGS)
-
-task4: $(PYTHON)
-	TRIALS=$${TRIALS:-3} MESSAGE_KB=$${MESSAGE_KB:-1} ./scripts/task4_baseline.sh
-
-task4-netem: $(PYTHON)
-	TRIALS=$${TRIALS:-3} MESSAGE_KB=$${MESSAGE_KB:-1} ./scripts/task4_netem_lo_sweep.sh
 
 timing-stats: $(PYTHON)
 	$(PYTHON) -m padding_oracle.timing_stats $(ARGS)
