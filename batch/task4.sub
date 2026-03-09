@@ -19,4 +19,7 @@
 
 # ----------------------- JOB DEFINITION --------------------- #
 
-./.venv/bin/python3.12 -m padding_oracle.cli task4 --trials 10 --jitters-ms "0,0.01,0.05,0.1,0.5,1,5" --message-kb 16
+for i in $(seq 1 10); do
+  echo "trial $i/10"
+  ./.venv/bin/python3.12 -m padding_oracle.cli timing --message-kb 16
+done

@@ -145,14 +145,12 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=200, help="unreported warmup checks per path")
     parser.add_argument("--message", help="explicit plaintext to encrypt")
     parser.add_argument("--message-kb", type=float, help="random plaintext size in KB")
-    parser.add_argument("--jitter-ms", type=float, default=0.0, help="proxy jitter")
     args = parser.parse_args()
 
     if args.trials < 1:
         raise ValueError("trials must be >= 1")
     if args.warmup < 0:
         raise ValueError("warmup must be >= 0")
-    _ = utils.ms_to_seconds(args.jitter_ms)
 
     if args.message is not None:
         if args.message_kb is not None:
@@ -177,23 +175,13 @@ def main() -> None:
             mac_key,
         )
     )
-
-    proxy_addr = process.free_local_addr()
-    proxy_proc = process.start_self_process(
-        utils.proxy_command_args(
-            listen_addr=proxy_addr,
-            target_addr=server_addr,
-            jitter_ms=args.jitter_ms,
-        )
-    )
     CONSOLE.section("Timing Stats - Path Separation")
     CONSOLE.kv("status", "starting execution...")
 
     try:
         process.wait_for_tcp(server_addr, timeout=3.0)
-        process.wait_for_tcp(proxy_addr, timeout=3.0)
 
-        with protocol.Client(proxy_addr, timeout=2.0) as client:
+        with protocol.Client(server_addr, timeout=2.0) as client:
             ciphertext = client.encrypt(msg)
             # long_path_ct: valid padding, MAC check executed (but fails).
             long_path_ct = _ensure_valid_padding_mac_fail(client, enc_key, ciphertext)
@@ -226,7 +214,6 @@ def main() -> None:
 
         CONSOLE.kv("trials", args.trials)
         CONSOLE.kv("warmup", args.warmup)
-        CONSOLE.kv("jitter_ms", f"{args.jitter_ms:.6f}")
         if message_mode == "random":
             CONSOLE.kv("message_mode", f"random message_kb={message_kb}")
         else:
@@ -238,7 +225,6 @@ def main() -> None:
         )
         CONSOLE.kv("signal", CONSOLE.delta_label(delta_avg_ms))
     finally:
-        process.stop_process(proxy_proc)
         process.stop_process(server_proc)
 
 

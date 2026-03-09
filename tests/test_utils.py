@@ -31,25 +31,6 @@ class UtilsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             utils.kb_to_bytes(0)
 
-    def test_proxy_command_args(self) -> None:
-        args = utils.proxy_command_args(
-            listen_addr="127.0.0.1:1111",
-            target_addr="127.0.0.1:2222",
-            jitter_ms=0.01,
-        )
-        self.assertEqual(
-            args,
-            [
-                "proxy",
-                "--listen",
-                "127.0.0.1:1111",
-                "--target",
-                "127.0.0.1:2222",
-                "--jitter-ms",
-                "0.01",
-            ],
-        )
-
     def test_server_command_args(self) -> None:
         args = utils.server_command_args(
             addr="127.0.0.1:4000",

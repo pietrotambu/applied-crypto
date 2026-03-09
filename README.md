@@ -1,25 +1,25 @@
 # CBC Padding Oracle Project (Python, Tasks 2, 3, 4)
 
-This is a standalone Python 3 repository implementing:
+This repository implements:
 - Task 2: classic CBC padding-oracle plaintext recovery (boolean oracle).
 - Task 3: timing-oracle attack against a MAC-then-encrypt CBC receiver.
-- Task 4: benchmark of timing attack robustness under injected localhost noise.
+- Task 4: repeated timing-attack trials to measure robustness under external network noise.
 
-Design constraints:
-- Multiprocess communication over `127.0.0.1` is used for task 3 and task 4.
-- No multithreaded attack flow is used.
+The codebase intentionally has no in-code proxy/jitter layer. For Task 4 noise experiments,
+use external setup (for example two machines on a LAN, or Linux `tc netem`).
 
 ## Repository Structure
 
 - `padding_oracle/crypto.py`: AES-CBC and PKCS#7 primitives.
-- `padding_oracle/services.py`: vulnerable services for task2 and task3/4.
+- `padding_oracle/services.py`: vulnerable services for Task 2 and Task 3/4.
 - `padding_oracle/protocol.py`: line-based TCP protocol (`ENCRYPT`, `CHECK`).
 - `padding_oracle/attacks/`: boolean and timing attack implementations.
-- `padding_oracle/proxy.py`: jitter proxy used to inject network noise.
 - `padding_oracle/process.py`: subprocess/socket helpers for orchestration.
-- `padding_oracle/cli.py`: command entrypoints for server/proxy/tasks.
-- `padding_oracle/timing_stats.py`: path timing comparison utility.
-- `tests/`: unit tests for crypto utilities, services, attacks, proxy behavior.
+- `padding_oracle/cli.py`: command entrypoints for `server`, `boolean`, and `timing`.
+- `padding_oracle/timing_stats.py`: long-path vs short-path timing separation utility.
+- `scripts/task4_baseline.sh`: baseline Task 4 run script.
+- `scripts/task4_netem_lo_sweep.sh`: loopback netem sweep script for Task 4.
+- `tests/`: unit tests.
 
 ## Quickstart (Make-first)
 
@@ -27,122 +27,61 @@ Prerequisites:
 - Python 3.10+
 - `make`
 
-Show available commands:
 ```bash
 make help
-```
-
-Create local virtual environment:
-```bash
 make venv
-```
-
-Install dependencies:
-```bash
 make install
 ```
 
-Optional editable install (adds `padding-oracle` command):
+Optional editable install:
 ```bash
 make install-editable
 ```
 
-Run task 2 demo:
+Run task demos:
 ```bash
-make task2
+make boolean
+make timing
+make timing ARGS='--message-kb 4'
+make timing ARGS="--message 'hello world'"
 ```
 
-Run task 3 demo (spawns localhost server process automatically):
+Run a custom CLI command:
 ```bash
-make task3
+make run COMMAND='boolean --message "hello"'
+make run COMMAND='timing --message-kb 1'
 ```
 
-Run task 3 with random 4 KB plaintext:
-```bash
-make task3 ARGS='--message-kb 4'
-```
+## Running Tests
 
-Run task 3 with a fixed plaintext:
-```bash
-make task3 ARGS="--message 'hello world'"
-```
-
-Run a fully custom CLI command:
-```bash
-make run COMMAND='task4 --trials 3 --jitters-ms 0,0.01,0.02'
-```
-
-Equivalent direct Python commands (if you do not want to use `make`):
-```bash
-python3 -m pip install -r requirements.txt
-python3 -m pip install -e .
-python3 -m padding_oracle.cli task2
-python3 -m padding_oracle.cli task3
-```
-
-## Running the test cases
-
-Run all tests:
+Run all unit tests:
 ```bash
 make test
 ```
 
-Interpretation:
-- `test_recover_plaintext_boolean` validates full plaintext recovery for task 2.
-- `test_recover_block_timing_synthetic_oracle` validates timing-based byte recovery logic.
+## Task 4 Runs (No Internal Jitter)
 
-## Running benchmarks
+There is no `task4` CLI subcommand. Task 4 is handled by running repeated `timing`
+executions under different external network conditions.
 
-Run task 4 benchmark with configurable jitter levels (milliseconds, decimals allowed):
+Use helper scripts:
 ```bash
-make task4 ARGS='--trials 3 --jitters-ms 1,2,3,4 --message-kb 1'
+./scripts/task4_baseline.sh
+./scripts/task4_netem_lo_sweep.sh
 ```
 
-Sampling behavior note:
-- task3/task4 use internal adaptive sampling with a confidence stop condition.
-- per-byte refinement also has a max-query cap to avoid unbounded runs in low-signal cases.
-- `--initial-samples`, `--refine-samples`, and `--top-k` are not exposed as CLI flags.
-
-Output format example:
-```text
-Task 4 - Timing Robustness Sweep
-server: 127.0.0.1:43977
-trials_per_jitter: 3
-message_mode: random message_kb=1.0
-target_mode: single_block auto (last_or_second_last_if_full_padding)
-confidence: z>=2.50, min_samples=10, max_queries_per_byte=100000
-jitter_ms  success  avg_queries  avg_elapsed_ms   status
-2.000000   1.00000     10112.0       13500.28      GOOD
-4.000000   1.00000     10112.0       25351.21      GOOD
-8.000000   0.66667     10112.0       49087.97   PARTIAL
-12.000000  0.00000     10112.0       69397.78      FAIL
-
-...
-```
-
-Interpretation:
-- `success`: fraction of successful block recoveries over all requested trials.
-- `message-kb`: used to generate one random alphanumeric plaintext of this size.
-- task4 reuses the same message across all trials and all jitter rows for apples-to-apples comparison.
-- `avg_queries`: average oracle calls over completed trials (prints `nan` if none completed).
-- `avg_elapsed_ms`: average wall-clock attack time over completed trials (prints `nan` if none completed).
-- `status`: row label (`GOOD`, `PARTIAL`, `FAIL`, or `ERROR`).
-- Increasing jitter generally lowers success and increases runtime.
-
-## Timing Statistics Script
-
-Analyze task4-style timing branch separation over many retries (through server + proxy):
+Optional tuning:
 ```bash
-make timing-stats ARGS='--trials 10000 --warmup 500 --jitter-ms 0.01 --message-kb 1'
+TRIALS=5 MESSAGE_KB=2 ./scripts/task4_baseline.sh
+TRIALS=5 MESSAGE_KB=2 ./scripts/task4_netem_lo_sweep.sh
 ```
 
-Use a fixed message instead of random-by-size:
+`task4_netem_lo_sweep.sh` applies noise externally on loopback via `tc netem` and executes repeated `timing` runs per profile.
+
+## Timing Statistics
+
+Compare long-path vs short-path timing over many checks:
 ```bash
-make timing-stats ARGS="--trials 10000 --warmup 500 --jitter-ms 0.01 --message 'hello world'"
+make timing-stats ARGS='--trials 10000 --warmup 500 --message-kb 1'
+make timing-stats ARGS="--trials 10000 --warmup 500 --message 'hello world'"
 ```
-
-The report is intentionally simple and prints:
-- startup metadata (`trials`, `warmup`, `jitter_ms`, `message_mode`)
-- `delta_avg_ms (long-short)` as the key signal
-- a signal label (`LONG>SHORT`, `EQUAL`, `LONG<SHORT`)
-- if both `--message` and `--message-kb` are provided, `--message` is used and a warning is printed.

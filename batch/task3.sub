@@ -20,5 +20,4 @@
 # ----------------------- JOB DEFINITION --------------------- #
 
 
-./.venv/bin/python3.12 -m padding_oracle.cli task3 --message-kb 16
-
+./.venv/bin/python3.12 -m padding_oracle.cli timing --message-kb 16

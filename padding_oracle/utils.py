@@ -31,30 +31,6 @@ def parse_hex_mac_key(value: str) -> bytes:
         raise ValueError("invalid MAC key length 0")
     return out
 
-
-def parse_csv_floats(raw: str) -> list[float]:
-    """Parse a comma-separated list of non-negative floats."""
-    values: list[float] = []
-    for part in raw.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        value = float(part)
-        if value < 0:
-            raise ValueError("negative values are not allowed")
-        values.append(value)
-    if not values:
-        raise ValueError("no values provided")
-    return values
-
-
-def ms_to_seconds(value: float) -> float:
-    """Convert milliseconds to seconds with non-negative validation."""
-    if value < 0:
-        raise ValueError("must be non-negative")
-    return value / 1000.0
-
-
 def kb_to_bytes(value_kb: float) -> int:
     """Convert a positive size in KB to an integer number of bytes."""
     if value_kb <= 0:
@@ -71,19 +47,6 @@ def random_message_from_kb(value_kb: float) -> bytes:
     alphabet = string.ascii_letters + string.digits
     out = "".join(secrets.choice(alphabet) for _ in range(size_bytes))
     return out.encode("ascii")
-
-
-def proxy_command_args(listen_addr: str, target_addr: str, jitter_ms: float) -> list[str]:
-    """Construct CLI args for launching the local jitter proxy."""
-    return [
-        "proxy",
-        "--listen",
-        listen_addr,
-        "--target",
-        target_addr,
-        "--jitter-ms",
-        f"{jitter_ms}",
-    ]
 
 
 def server_command_args(
