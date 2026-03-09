@@ -76,6 +76,10 @@ python3 -m padding_oracle.cli victim \
 ```bash
 python3 -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16
 ```
+Progress logging every 10 seconds (default):
+```bash
+python3 -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16 --log-progress
+```
 
 3. Optional validation (if attacker knows victim MAC key):
 ```bash

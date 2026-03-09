@@ -9,6 +9,8 @@ from typing import Callable
 from . import attacks, crypto, process, protocol, services, utils
 from .console import CONSOLE
 
+ATTACKER_PROGRESS_INTERVAL_SEC = 10.0
+
 
 def _add_server_args(parser: argparse.ArgumentParser) -> None:
     """Attach common victim/server flags to a parser."""
@@ -55,6 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional hex MAC key to verify recovered block against expected payload",
     )
     p_attacker.add_argument("--timeout", type=float, default=2.0, help="TCP connect timeout in seconds")
+    p_attacker.add_argument(
+        "--log-progress",
+        action="store_true",
+        help=f"log cumulative queries every {ATTACKER_PROGRESS_INTERVAL_SEC:.0f} seconds",
+    )
     return parser
 
 
@@ -167,6 +174,7 @@ def run_attacker(args: argparse.Namespace) -> None:
 
     msg, message_mode, message_kb = _resolve_message_bytes(args.message, args.message_kb)
     cfg = _timing_config()
+    progress_callback = _build_queries_progress_callback(args.log_progress)
     verify_mac_key = (
         utils.parse_hex_mac_key(args.verify_mac_key) if args.verify_mac_key is not None else None
     )
@@ -188,6 +196,7 @@ def run_attacker(args: argparse.Namespace) -> None:
             message=msg,
             target_block_index=args.target_block_index,
             config=cfg,
+            progress_callback=progress_callback,
         )
 
     CONSOLE.kv("message_mode", "literal" if message_mode == "literal" else f"random message_kb={message_kb}")
@@ -277,6 +286,7 @@ def _recover_target_block(
     ciphertext: bytes,
     target_block_index: int,
     config: attacks.TimingConfig,
+    progress_callback: Callable[[int], None] | None = None,
 ) -> tuple[bytes, int, float]:
     """Recover one block and return `(block, queries, elapsed_ms)`."""
     oracle = _make_timing_oracle(client)
@@ -286,6 +296,7 @@ def _recover_target_block(
         target_block_index,
         oracle,
         config,
+        progress_callback=progress_callback,
     )
     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
     return recovered, queries, elapsed_ms
@@ -296,6 +307,7 @@ def _recover_selected_block(
     message: bytes,
     target_block_index: int | None,
     config: attacks.TimingConfig,
+    progress_callback: Callable[[int], None] | None = None,
 ) -> tuple[bytes, int, float, int, str]:
     """Encrypt message, choose target block, and recover that block."""
     ciphertext = client.encrypt(message)
@@ -309,6 +321,7 @@ def _recover_selected_block(
         ciphertext=ciphertext,
         target_block_index=block_index,
         config=config,
+        progress_callback=progress_callback,
     )
     return recovered, queries, elapsed_ms, block_index, target_name
 
@@ -326,6 +339,29 @@ def _resolve_target_block_index(
     if requested < 1 or requested >= num_blocks:
         raise ValueError(f"target block index {requested} out of range [1,{num_blocks - 1}]")
     return requested, "manual_payload_block"
+
+
+def _build_queries_progress_callback(
+    enabled: bool,
+) -> Callable[[int], None] | None:
+    """Build a throttled progress logger for cumulative query count."""
+    if not enabled:
+        return None
+
+    started = time.monotonic()
+    last_emit = started
+
+    def callback(queries: int) -> None:
+        nonlocal last_emit
+        now = time.monotonic()
+        if now - last_emit < ATTACKER_PROGRESS_INTERVAL_SEC:
+            return
+        elapsed = now - started
+        qps = queries / elapsed if elapsed > 0 else 0.0
+        CONSOLE.kv("progress", f"queries={queries} elapsed_s={elapsed:.1f} qps={qps:.1f}")
+        last_emit = now
+
+    return callback
 
 
 if __name__ == "__main__":
