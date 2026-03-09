@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# ----------------------- JOB PARAMETERS ---------------------- #
+
+#BSUB -J task2
+
+#BSUB -q hpc
+
+#BSUB -n 24
+
+#BSUB -R "rusage[mem=1GB]"
+
+#BSUB -R "select[model == XeonE5_2650v4] span[hosts=1]"
+
+#BSUB -W 04:00
+
+#BSUB -o ./batch/task2_%J.out
+#BSUB -e ./batch/task2_%J.err
+
+# ----------------------- JOB DEFINITION --------------------- #
+
+
+./.venv/bin/python3.12 -m padding_oracle.cli boolean --message '0124567890abcdef'

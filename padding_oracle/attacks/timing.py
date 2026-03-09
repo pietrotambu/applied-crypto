@@ -23,7 +23,7 @@ class TimingConfig:
     top_candidates: int = 6
     confidence_z: float = 3.5
     min_compare_samples: int = 10
-    max_queries_per_byte: int = 20_000
+    max_queries_per_byte: int = 100_000
 
     def normalized(self) -> "TimingConfig":
         """Return a sanitized configuration with safe minimums/bounds."""
