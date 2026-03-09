@@ -1,3 +1,5 @@
+"""Simple line-based TCP protocol for encrypt/check requests."""
+
 from __future__ import annotations
 
 import base64
@@ -9,12 +11,15 @@ from . import utils
 
 
 class Service(Protocol):
+    """Protocol contract expected by the TCP server."""
+
     def encrypt(self, plaintext: bytes) -> bytes: ...
 
     def check(self, ciphertext: bytes) -> bool: ...
 
 
 def serve(addr: str, service: Service) -> None:
+    """Serve one connection at a time on `addr`."""
     host, port = utils.split_addr(addr)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -27,6 +32,7 @@ def serve(addr: str, service: Service) -> None:
 
 
 def _handle_connection(conn: socket.socket, service: Service) -> None:
+    """Handle requests on one TCP connection until EOF."""
     reader = conn.makefile("rb")
     writer = conn.makefile("wb")
     try:
@@ -43,6 +49,7 @@ def _handle_connection(conn: socket.socket, service: Service) -> None:
                 continue
 
             cmd, encoded = parts
+            cmd_upper = cmd.upper()
             try:
                 payload = base64.b64decode(encoded, validate=True)
             except Exception:
@@ -50,7 +57,7 @@ def _handle_connection(conn: socket.socket, service: Service) -> None:
                 writer.flush()
                 continue
 
-            if cmd.upper() == b"ENCRYPT":
+            if cmd_upper == b"ENCRYPT":
                 try:
                     ct = service.encrypt(payload)
                     writer.write(b"CT " + base64.b64encode(ct) + b"\n")
@@ -59,7 +66,7 @@ def _handle_connection(conn: socket.socket, service: Service) -> None:
                 writer.flush()
                 continue
 
-            if cmd.upper() == b"CHECK":
+            if cmd_upper == b"CHECK":
                 try:
                     ok = service.check(payload)
                 except Exception:
@@ -78,6 +85,8 @@ def _handle_connection(conn: socket.socket, service: Service) -> None:
 
 
 class Client:
+    """Convenience client for the line-based protocol."""
+
     def __init__(self, addr: str, timeout: float = 2.0):
         host, port = utils.split_addr(addr)
         self._sock = socket.create_connection((host, port), timeout=timeout)
@@ -85,6 +94,7 @@ class Client:
         self._writer = self._sock.makefile("wb")
 
     def close(self) -> None:
+        """Best-effort cleanup of socket and buffered streams."""
         try:
             self._writer.close()
         except Exception:
@@ -105,6 +115,7 @@ class Client:
         self.close()
 
     def encrypt(self, message: bytes) -> bytes:
+        """Request server-side encryption and return raw ciphertext bytes."""
         self._send_line(b"ENCRYPT " + base64.b64encode(message))
         line = self._recv_line()
         if not line.startswith(b"CT "):
@@ -112,6 +123,7 @@ class Client:
         return base64.b64decode(line[3:], validate=True)
 
     def check(self, ciphertext: bytes) -> tuple[bool, int]:
+        """Request padding/MAC check and return `(accepted, elapsed_ns)`."""
         send_message: bytes = b"CHECK " + base64.b64encode(ciphertext)
 
         start = time.perf_counter_ns()
@@ -130,8 +142,10 @@ class Client:
         raise ValueError(f"unexpected check response: {line!r}")
 
     def _send_line(self, line: bytes) -> None:
+        """Write one protocol line."""
         self._writer.write(line + b"\n")
         self._writer.flush()
 
     def _recv_line(self) -> bytes:
+        """Read one protocol line without the trailing newline."""
         return self._reader.readline().strip()

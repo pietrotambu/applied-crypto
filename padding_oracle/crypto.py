@@ -1,3 +1,5 @@
+"""Low-level cryptographic helpers for CBC and PKCS#7 operations."""
+
 from __future__ import annotations
 
 import os
@@ -8,17 +10,20 @@ BLOCK_SIZE = 16
 
 
 class InvalidPaddingError(ValueError):
-    pass
+    """Raised when PKCS#7 structure is invalid."""
+
 
 class InvalidCiphertextError(ValueError):
-    pass
+    """Raised when ciphertext shape is incompatible with CBC decryption."""
 
 
 def random_bytes(size: int) -> bytes:
+    """Return `size` bytes of cryptographically secure randomness."""
     return os.urandom(size)
 
 
 def pkcs7_pad(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
+    """Apply PKCS#7 padding to `data` for the given block size."""
     if block_size <= 0:
         raise ValueError("block_size must be > 0")
     pad_len = block_size - (len(data) % block_size)
@@ -28,6 +33,7 @@ def pkcs7_pad(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
 
 
 def pkcs7_unpad(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
+    """Remove and validate PKCS#7 padding."""
     if block_size <= 0 or not data or len(data) % block_size != 0:
         raise InvalidPaddingError("invalid PKCS#7 padding")
     pad_len = data[-1]
@@ -39,6 +45,7 @@ def pkcs7_unpad(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
 
 
 def encrypt_cbc(key: bytes, plaintext: bytes) -> bytes:
+    """Encrypt plaintext with AES-CBC and return `IV || C`."""
     iv = os.urandom(BLOCK_SIZE)
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
     encryptor = cipher.encryptor()
@@ -48,8 +55,10 @@ def encrypt_cbc(key: bytes, plaintext: bytes) -> bytes:
 
 
 def decrypt_cbc_raw(key: bytes, ciphertext: bytes) -> bytes:
-    # len(ciphertext) needs to be always >= of BLOCK_SIZE * 2.
-    # C[0] = IV and C[1] = Fk(IV XOR P[1]). So even if P[1] it's empty, we always have at least 2 blocks (C[0] and C[1])
+    """Decrypt `IV || C` and return padded plaintext bytes.
+
+    CBC requires one IV block plus at least one ciphertext block.
+    """
     if len(ciphertext) < 2 * BLOCK_SIZE or len(ciphertext) % BLOCK_SIZE != 0:
         raise InvalidCiphertextError("invalid ciphertext")
     iv = ciphertext[:BLOCK_SIZE]

@@ -1,3 +1,5 @@
+"""Classic boolean padding-oracle attack implementation."""
+
 from __future__ import annotations
 
 from .. import crypto
@@ -5,6 +7,16 @@ from .common import AttackError, BoolOracle
 
 
 def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple[bytes, int]:
+    """Recover one plaintext block with a boolean PKCS#7 padding oracle.
+
+    Args:
+        prev: Previous ciphertext block (or IV).
+        curr: Ciphertext block to decrypt.
+        oracle: Callable returning whether padding is valid.
+
+    Returns:
+        Tuple of recovered plaintext block and number of oracle queries.
+    """
     if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
         raise AttackError("recover_block_boolean requires two 16-byte blocks")
 
@@ -47,6 +59,7 @@ def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple
 
 
 def recover_plaintext_boolean(ciphertext: bytes, oracle: BoolOracle) -> tuple[bytes, int]:
+    """Recover full plaintext by attacking each CBC block with a boolean oracle."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
         raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
 

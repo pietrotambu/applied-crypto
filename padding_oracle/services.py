@@ -1,3 +1,5 @@
+"""Service layer for task-specific vulnerable receivers."""
+
 from __future__ import annotations
 
 import hmac
@@ -9,7 +11,7 @@ SHAKE256_RATE_BYTES = 136
 
 
 def _hmac_shake256(key: bytes, msg: bytes, tag_bytes: int) -> bytes:
-    # HMAC-style construction over SHAKE256 using sponge rate as block size.
+    """HMAC-style construction over SHAKE256 using sponge rate as block size."""
     if tag_bytes < 1:
         raise ValueError("mac_tag_bytes must be >= 1")
 
@@ -32,6 +34,7 @@ def compute_mac_tag(
     msg: bytes,
     mac_tag_bytes: int = 32,
 ) -> bytes:
+    """Compute MAC tag for the supported algorithm choices."""
     if mac_alg == "sha256":
         if mac_tag_bytes != 32:
             raise ValueError("sha256 mode requires mac_tag_bytes=32")
@@ -42,13 +45,17 @@ def compute_mac_tag(
 
 
 class BasicOracleService:
+    """Task-2 service exposing encryption and a boolean padding oracle."""
+
     def __init__(self, key: bytes):
         self._key = bytes(key)
 
     def encrypt(self, plaintext: bytes) -> bytes:
+        """Encrypt plaintext under AES-CBC."""
         return crypto.encrypt_cbc(self._key, plaintext)
 
     def padding_oracle(self, ciphertext: bytes) -> bool:
+        """Return whether ciphertext decrypts to valid PKCS#7 padding."""
         try:
             padded = crypto.decrypt_cbc_raw(self._key, ciphertext)
             crypto.pkcs7_unpad(padded, crypto.BLOCK_SIZE)
@@ -58,6 +65,8 @@ class BasicOracleService:
 
 
 class MacThenEncryptService:
+    """Task-3/4 service with MAC-then-encrypt and timing-different failure paths."""
+
     def __init__(
         self,
         enc_key: bytes,
@@ -77,11 +86,13 @@ class MacThenEncryptService:
         _ = compute_mac_tag(self._mac_alg, self._mac_key, b"", self._mac_tag_bytes)
 
     def encrypt(self, plaintext: bytes) -> bytes:
+        """Encrypt `plaintext || MAC(plaintext)` under AES-CBC."""
         tag = compute_mac_tag(self._mac_alg, self._mac_key, plaintext, self._mac_tag_bytes)
         payload = plaintext + tag
         return crypto.encrypt_cbc(self._enc_key, payload)
 
     def check(self, ciphertext: bytes) -> bool:
+        """Validate ciphertext by checking padding first, then MAC."""
         try:
             padded = crypto.decrypt_cbc_raw(self._enc_key, ciphertext)
         except Exception:
@@ -100,12 +111,14 @@ class MacThenEncryptService:
             msg = payload
             tag = b""
 
-        if self._timing_work_factor == 1:
-            expected = compute_mac_tag(self._mac_alg, self._mac_key, msg, self._mac_tag_bytes)
-        else:
-            expected = b""
-            for _ in range(self._timing_work_factor):
-                expected = compute_mac_tag(self._mac_alg, self._mac_key, msg, self._mac_tag_bytes)
+        expected = self._expected_tag(msg)
         if len(tag) != len(expected):
             return False
         return hmac.compare_digest(tag, expected)
+
+    def _expected_tag(self, msg: bytes) -> bytes:
+        """Compute expected tag and optionally repeat it to amplify timing gap."""
+        expected = b""
+        for _ in range(self._timing_work_factor):
+            expected = compute_mac_tag(self._mac_alg, self._mac_key, msg, self._mac_tag_bytes)
+        return expected

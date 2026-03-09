@@ -9,6 +9,18 @@ Design constraints:
 - Multiprocess communication over `127.0.0.1` is used for task 3 and task 4.
 - No multithreaded attack flow is used.
 
+## Repository Structure
+
+- `padding_oracle/crypto.py`: AES-CBC and PKCS#7 primitives.
+- `padding_oracle/services.py`: vulnerable services for task2 and task3/4.
+- `padding_oracle/protocol.py`: line-based TCP protocol (`ENCRYPT`, `CHECK`).
+- `padding_oracle/attacks/`: boolean and timing attack implementations.
+- `padding_oracle/proxy.py`: jitter proxy used to inject network noise.
+- `padding_oracle/process.py`: subprocess/socket helpers for orchestration.
+- `padding_oracle/cli.py`: command entrypoints for server/proxy/tasks.
+- `padding_oracle/timing_stats.py`: path timing comparison utility.
+- `tests/`: unit tests for crypto utilities, services, attacks, proxy behavior.
+
 ## Quickstart (Make-first)
 
 Prerequisites:

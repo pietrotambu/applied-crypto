@@ -1,3 +1,5 @@
+"""Collect timing distributions for long-path vs short-path server checks."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,6 +11,8 @@ from . import crypto, process, protocol, utils
 
 @dataclass(frozen=True)
 class Summary:
+    """Compact view of sampled timings in milliseconds."""
+
     count: int
     min_ms: float
     avg_ms: float
@@ -16,6 +20,7 @@ class Summary:
 
 
 def _summarize(values: list[int]) -> Summary:
+    """Summarize nanosecond samples into min/avg/max milliseconds."""
     if not values:
         return Summary(
             count=0,
@@ -38,6 +43,7 @@ def _collect_samples(
     trials: int,
     warmup: int,
 ) -> list[int]:
+    """Collect repeated timing measurements for a fixed ciphertext."""
     samples_ns: list[int] = []
 
     for _ in range(warmup):
@@ -50,8 +56,7 @@ def _collect_samples(
 
 
 def _tamper_mac(ciphertext: bytes) -> bytes:
-    # Flip a byte in the block before the last block. This mirrors the
-    # last-block attack shape while keeping full-ciphertext context.
+    """Flip one byte near the end while preserving likely-valid padding."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE:
         raise ValueError("ciphertext too short")
     out = bytearray(ciphertext)
@@ -60,15 +65,16 @@ def _tamper_mac(ciphertext: bytes) -> bytes:
 
 
 def _tamper_padding(ciphertext: bytes) -> bytes:
+    """Flip a byte that directly influences final-block PKCS#7 validation."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE:
         raise ValueError("ciphertext too short")
     out = bytearray(ciphertext)
-    # Flip the last byte of C_{n-1} to directly affect last-block padding.
     out[len(ciphertext) - crypto.BLOCK_SIZE - 1] ^= 0x01
     return bytes(out)
 
 
 def _ensure_invalid_padding(client: protocol.Client, enc_key: bytes, base_ct: bytes) -> bytes:
+    """Find a ciphertext rejected due to invalid padding."""
     candidate = _tamper_padding(base_ct)
     if not _padding_valid_local(enc_key, candidate):
         ok, _ = client.check(candidate)
@@ -93,6 +99,7 @@ def _ensure_invalid_padding(client: protocol.Client, enc_key: bytes, base_ct: by
 
 
 def _padding_valid_local(enc_key: bytes, ciphertext: bytes) -> bool:
+    """Local oracle used to classify candidates while building samples."""
     try:
         padded = crypto.decrypt_cbc_raw(enc_key, ciphertext)
         _ = crypto.pkcs7_unpad(padded, crypto.BLOCK_SIZE)
@@ -106,6 +113,7 @@ def _ensure_valid_padding_mac_fail(
     enc_key: bytes,
     base_ct: bytes,
 ) -> bytes:
+    """Find a ciphertext with valid padding but MAC failure."""
     if len(base_ct) < 2 * crypto.BLOCK_SIZE:
         raise ValueError("ciphertext too short")
 
@@ -123,6 +131,7 @@ def _ensure_valid_padding_mac_fail(
 
 
 def main() -> None:
+    """CLI entrypoint for timing path statistics collection."""
     parser = argparse.ArgumentParser(
         prog="padding-oracle-timing-stats",
         description="Compare task4 long path vs short path timings.",

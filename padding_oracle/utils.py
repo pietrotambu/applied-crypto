@@ -1,3 +1,5 @@
+"""Shared parsing, sizing, and command-construction helpers."""
+
 import secrets
 import string
 
@@ -5,11 +7,13 @@ from . import crypto, services
 
 
 def split_addr(addr: str) -> tuple[str, int]:
+    """Split `host:port` into `(host, port)`."""
     host, port_raw = addr.rsplit(":", 1)
     return host, int(port_raw)
 
 
 def parse_hex_aes_key(value: str) -> bytes:
+    """Parse and validate a hexadecimal AES key."""
     if not value:
         raise ValueError("missing key")
     out = bytes.fromhex(value)
@@ -19,6 +23,7 @@ def parse_hex_aes_key(value: str) -> bytes:
 
 
 def parse_hex_mac_key(value: str) -> bytes:
+    """Parse and validate a non-empty hexadecimal MAC key."""
     if not value:
         raise ValueError("missing key")
     out = bytes.fromhex(value)
@@ -28,6 +33,7 @@ def parse_hex_mac_key(value: str) -> bytes:
 
 
 def parse_csv_floats(raw: str) -> list[float]:
+    """Parse a comma-separated list of non-negative floats."""
     values: list[float] = []
     for part in raw.split(","):
         part = part.strip()
@@ -43,12 +49,14 @@ def parse_csv_floats(raw: str) -> list[float]:
 
 
 def ms_to_seconds(value: float) -> float:
+    """Convert milliseconds to seconds with non-negative validation."""
     if value < 0:
         raise ValueError("must be non-negative")
     return value / 1000.0
 
 
 def kb_to_bytes(value_kb: float) -> int:
+    """Convert a positive size in KB to an integer number of bytes."""
     if value_kb <= 0:
         raise ValueError("message size must be > 0 KB")
     out = int(value_kb * 1024)
@@ -58,6 +66,7 @@ def kb_to_bytes(value_kb: float) -> int:
 
 
 def random_message_from_kb(value_kb: float) -> bytes:
+    """Build a random ASCII message of approximately `value_kb` kilobytes."""
     size_bytes = kb_to_bytes(value_kb)
     alphabet = string.ascii_letters + string.digits
     out = "".join(secrets.choice(alphabet) for _ in range(size_bytes))
@@ -65,6 +74,7 @@ def random_message_from_kb(value_kb: float) -> bytes:
 
 
 def proxy_command_args(listen_addr: str, target_addr: str, jitter_ms: float) -> list[str]:
+    """Construct CLI args for launching the local jitter proxy."""
     return [
         "proxy",
         "--listen",
@@ -84,6 +94,7 @@ def server_command_args(
     mac_alg: str = "sha256",
     mac_tag_bytes: int = 32,
 ) -> list[str]:
+    """Construct CLI args for launching the vulnerable server process."""
     args = [
         "server",
         "--addr",
@@ -109,6 +120,7 @@ def expected_payload_padded(
     mac_alg: str = "sha256",
     mac_tag_bytes: int = 32,
 ) -> bytes:
+    """Return `PKCS7(msg || tag)` for the configured MAC settings."""
     tag = services.compute_mac_tag(mac_alg, mac_key, msg, mac_tag_bytes)
     return crypto.pkcs7_pad(msg + tag, crypto.BLOCK_SIZE)
 
@@ -120,6 +132,7 @@ def expected_payload_block(
     mac_alg: str = "sha256",
     mac_tag_bytes: int = 32,
 ) -> bytes:
+    """Return one 1-based block from the padded payload."""
     payload = expected_payload_padded(msg, mac_key, mac_alg=mac_alg, mac_tag_bytes=mac_tag_bytes)
     blocks = len(payload) // crypto.BLOCK_SIZE
     if block_index < 1 or block_index > blocks:
@@ -133,6 +146,7 @@ def choose_single_block_target(
     msg_len: int,
     mac_tag_bytes: int,
 ) -> tuple[int, str]:
+    """Pick attack target block while avoiding pure full-padding tail blocks."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
         raise ValueError("ciphertext must include IV and be a multiple of 16 bytes")
     if msg_len < 0:

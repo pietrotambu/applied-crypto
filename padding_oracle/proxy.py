@@ -1,3 +1,5 @@
+"""TCP proxy with optional per-direction jitter injection."""
+
 from __future__ import annotations
 
 import random
@@ -7,10 +9,11 @@ import time
 from . import utils
 
 _SPIN_GUARD_NS = 50_000
-_SLEEP_COARSE_NS = 2_000_000 # 2 ms
+_SLEEP_COARSE_NS = 2_000_000  # 2 ms
 
 
 def serve_proxy(listen_addr: str, target_addr: str, jitter_s: float) -> None:
+    """Run a single-threaded proxy from `listen_addr` to `target_addr`."""
     rng = random.Random()
     listen_host, listen_port = utils.split_addr(listen_addr)
 
@@ -31,6 +34,7 @@ def _handle_proxy_connection(
     jitter_s: float,
     rng: random.Random,
 ) -> None:
+    """Forward one client connection line-by-line with optional jitter."""
     target_host, target_port = utils.split_addr(target_addr)
     with socket.create_connection((target_host, target_port), timeout=2.0) as target_conn:
         client_reader = client_conn.makefile("rb")
@@ -74,10 +78,10 @@ def _handle_proxy_connection(
 
 
 def _delay(rng: random.Random, jitter_s: float) -> None:
+    """Sleep a random delay in `[0, jitter_s]` with half-normal density."""
     if jitter_s <= 0:
         return
 
-    # Half-normal jitter: highest density near 0, low probability near jitter_s.
     sigma = jitter_s / 3.0
     if sigma <= 0:
         return
@@ -89,11 +93,10 @@ def _delay(rng: random.Random, jitter_s: float) -> None:
 
 
 def _sleep_precise(total_s: float) -> None:
-    # Sleep most of the interval using the OS scheduler, then busy-spin the final
-    # few microseconds to improve precision. The loop re-checks the remaining time
-    # to compensate for scheduler jitter or early wakeups.
+    """Sleep with coarse waiting followed by short spin for better precision."""
     total_ns = int(total_s * 1_000_000_000)
-    if total_ns <= 0: return
+    if total_ns <= 0:
+        return
 
     deadline_ns = time.perf_counter_ns() + total_ns
 

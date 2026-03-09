@@ -1,3 +1,9 @@
+"""Timing-oracle padding attack utilities.
+
+The attack ranks byte guesses by response time and adaptively refines the most
+promising candidates until the best guess is statistically separated.
+"""
+
 from dataclasses import dataclass
 import math
 
@@ -10,11 +16,14 @@ _CONFIDENCE_Z = 2.5
 
 @dataclass
 class TimingConfig:
+    """Sampling configuration for timing-based byte ranking."""
+
     initial_samples: int = 1
     refine_samples: int = 4
     top_candidates: int = 6
 
     def normalized(self) -> "TimingConfig":
+        """Return a sanitized configuration with safe minimums/bounds."""
         return TimingConfig(
             initial_samples=max(1, int(self.initial_samples)),
             refine_samples=max(1, int(self.refine_samples)),
@@ -24,6 +33,8 @@ class TimingConfig:
 
 @dataclass
 class Score:
+    """Running aggregate for one guess candidate."""
+
     guess: int
     total: int
     total_sq: int
@@ -31,9 +42,11 @@ class Score:
     forged: bytes
 
     def avg(self) -> float:
+        """Mean observed duration for this candidate."""
         return self.total / self.samples
 
     def variance(self) -> float:
+        """Population variance estimate of the observed durations."""
         if self.samples < 2:
             return 0.0
         mean = self.avg()
@@ -50,6 +63,15 @@ def recover_block_timing(
     config: TimingConfig,
     prefix: bytes = b"",
 ) -> tuple[bytes, int]:
+    """Recover one plaintext block from timing leakage.
+
+    Args:
+        prev: Previous block (or IV).
+        curr: Target ciphertext block.
+        oracle: Callable returning timing (ns-like scalar) for one ciphertext.
+        config: Sampling strategy.
+        prefix: Optional untouched prefix blocks required by the oracle context.
+    """
     cfg = config.normalized()
     if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
         raise AttackError("recover_block_timing requires two 16-byte blocks")
@@ -113,10 +135,8 @@ def recover_block_timing(
         ranked = scores[:limit]
         best_guess = ranked[0].guess
 
-        # For the first recovered byte (pad=1), there can be two valid-padding
-        # candidates when the target plaintext block is already full padding
-        # (e.g. 0x10 * 16). Probe by flipping the previous byte: valid pad=1
-        # survives, while full-block padding usually collapses.
+        # With pad=1 there can be two viable candidates when the target block is
+        # full padding (0x10 repeated). A second probe disambiguates them.
         if pos == crypto.BLOCK_SIZE - 1 and len(ranked) > 1:
             best_guess, extra_queries = _resolve_last_byte_ambiguity(
                 ranked,
@@ -138,6 +158,10 @@ def recover_ciphertext_block_timing(
     oracle: TimingOracle,
     config: TimingConfig,
 ) -> tuple[bytes, int]:
+    """Recover one plaintext block from a full ciphertext by index.
+
+    `block_index` is 1-based over decrypted payload blocks (0 is the IV).
+    """
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
         raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
 
@@ -160,6 +184,7 @@ def recover_plaintext_timing(
     oracle: TimingOracle,
     config: TimingConfig,
 ) -> tuple[bytes, int]:
+    """Recover all plaintext blocks without stripping PKCS#7 padding."""
     if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
         raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
 
@@ -187,11 +212,13 @@ def recover_plaintext_timing(
 
 
 def _sample_duration_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> int:
+    """Return sum of sampled durations for one ciphertext."""
     total, _ = _sample_stats_ns(oracle, ciphertext, samples)
     return total
 
 
 def _sample_stats_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> tuple[int, int]:
+    """Return `(sum(x), sum(x^2))` over repeated oracle timings."""
     total = 0
     total_sq = 0
     for _ in range(samples):
@@ -202,6 +229,7 @@ def _sample_stats_ns(oracle: TimingOracle, ciphertext: bytes, samples: int) -> t
 
 
 def _is_confident(best: Score, second: Score) -> bool:
+    """Test whether top candidate is separated by a Z-score-like margin."""
     gap = best.avg() - second.avg()
     if gap <= 0:
         return False
@@ -218,6 +246,7 @@ def _resolve_last_byte_ambiguity(
     prefix_len: int,
     probe_samples: int,
 ) -> tuple[int, int]:
+    """Pick the most stable pad=1 guess using a targeted perturbation probe."""
     probe_pos = prefix_len + crypto.BLOCK_SIZE - 2
     best_guess = candidates[0].guess
     best_probe_avg = float("-inf")
