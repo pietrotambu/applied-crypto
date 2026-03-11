@@ -29,7 +29,7 @@ class TimingConfig:
     initial_samples: int = 1
     refine_samples: int = 4
     top_candidates: int = 6
-    confidence_z: float = 3.5
+    confidence_z: float = 2.5
     min_compare_samples: int = 10
     max_queries_per_byte: int = 100_000
 
