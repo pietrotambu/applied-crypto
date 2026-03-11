@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from .. import crypto
-from .common import AttackError, BoolOracle
+from .common import (
+    AttackError,
+    BoolOracle,
+    build_byte_recovery_base,
+    decode_guess_byte,
+    forge_candidate,
+    require_ciphertext_with_iv,
+    require_two_blocks,
+)
 
 
 def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple[bytes, int]:
@@ -17,25 +25,19 @@ def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple
     Returns:
         Tuple of recovered plaintext block and number of oracle queries.
     """
-    if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
-        raise AttackError("recover_block_boolean requires two 16-byte blocks")
+    require_two_blocks(prev, curr)
 
     intermediate = bytearray(crypto.BLOCK_SIZE)
     plaintext = bytearray(crypto.BLOCK_SIZE)
     queries = 0
 
     for pos in range(crypto.BLOCK_SIZE - 1, -1, -1):
-        pad = crypto.BLOCK_SIZE - pos
-        base = bytearray(prev)
         # Rewrite already-solved suffix bytes so they decrypt to the current pad.
-        for j in range(crypto.BLOCK_SIZE - 1, pos, -1):
-            base[j] = intermediate[j] ^ pad
+        pad, base = build_byte_recovery_base(prev, intermediate, pos)
 
         found = False
         for guess in range(256):
-            candidate_prev = bytearray(base)
-            candidate_prev[pos] = guess
-            forged = bytes(candidate_prev) + curr
+            candidate_prev, forged = forge_candidate(base, pos, guess, curr)
 
             queries += 1
             if not oracle(forged):
@@ -51,8 +53,7 @@ def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple
                     continue
 
             # D[pos] = C'_{i-1}[pos] XOR pad; then P[pos] = D[pos] XOR C_{i-1}[pos].
-            intermediate[pos] = guess ^ pad
-            plaintext[pos] = intermediate[pos] ^ prev[pos]
+            intermediate[pos], plaintext[pos] = decode_guess_byte(prev[pos], guess, pad)
             found = True
             break
 
@@ -64,8 +65,7 @@ def recover_block_boolean(prev: bytes, curr: bytes, oracle: BoolOracle) -> tuple
 
 def recover_plaintext_boolean(ciphertext: bytes, oracle: BoolOracle) -> tuple[bytes, int]:
     """Recover full plaintext by attacking each CBC block with a boolean oracle."""
-    if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
-        raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
+    _ = require_ciphertext_with_iv(ciphertext)
 
     blocks = [ciphertext[i : i + crypto.BLOCK_SIZE] for i in range(0, len(ciphertext), crypto.BLOCK_SIZE)]
     out = bytearray()

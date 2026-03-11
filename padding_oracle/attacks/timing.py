@@ -9,7 +9,15 @@ import math
 from typing import Callable
 
 from .. import crypto
-from .common import AttackError, TimingOracle
+from .common import (
+    AttackError,
+    TimingOracle,
+    build_byte_recovery_base,
+    decode_guess_byte,
+    forge_candidate,
+    require_ciphertext_with_iv,
+    require_two_blocks,
+)
 
 ProgressCallback = Callable[[int], None]
 
@@ -71,8 +79,7 @@ def recover_block_timing(
     """Recover one plaintext block from timing leakage."""
     cfg = config.normalized()
 
-    if len(prev) != crypto.BLOCK_SIZE or len(curr) != crypto.BLOCK_SIZE:
-        raise AttackError("recover_block_timing requires two 16-byte blocks")
+    require_two_blocks(prev, curr)
     if len(prefix) % crypto.BLOCK_SIZE != 0:
         raise AttackError("prefix must be a multiple of 16 bytes")
 
@@ -82,18 +89,12 @@ def recover_block_timing(
     prefix_bytes = bytes(prefix)
 
     for pos in range(crypto.BLOCK_SIZE - 1, -1, -1):
-        pad = crypto.BLOCK_SIZE - pos
-        base = bytearray(prev)
+        pad, base = build_byte_recovery_base(prev, intermediate, pos)
         byte_queries = 0
-
-        for j in range(crypto.BLOCK_SIZE - 1, pos, -1):
-            base[j] = intermediate[j] ^ pad
 
         scores: list[Score] = []
         for guess in range(256):
-            candidate_prev = bytearray(base)
-            candidate_prev[pos] = guess
-            forged = prefix_bytes + bytes(candidate_prev) + curr
+            _candidate_prev, forged = forge_candidate(base, pos, guess, curr, prefix=prefix_bytes)
             total, total_sq = _sample_stats_ns(oracle, forged, cfg.initial_samples)
             queries = _add_queries(queries, cfg.initial_samples, progress_callback)
             byte_queries += cfg.initial_samples
@@ -162,12 +163,11 @@ def recover_block_timing(
                         oracle,
                         prefix_len=len(prefix_bytes),
                         probe_samples=probe_samples,
-                    )
+                        )
                     queries = _add_queries(queries, extra_queries, progress_callback)
                     byte_queries += extra_queries
 
-        intermediate[pos] = best_guess ^ pad
-        plaintext[pos] = intermediate[pos] ^ prev[pos]
+        intermediate[pos], plaintext[pos] = decode_guess_byte(prev[pos], best_guess, pad)
 
     return bytes(plaintext), queries
 
@@ -180,10 +180,7 @@ def recover_ciphertext_block_timing(
     progress_callback: ProgressCallback | None = None,
 ) -> tuple[bytes, int]:
     """Recover one plaintext block from a full ciphertext by index."""
-    if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
-        raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
-
-    num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+    num_blocks = require_ciphertext_with_iv(ciphertext)
     if block_index < 1 or block_index >= num_blocks:
         raise AttackError(f"block index {block_index} out of range")
 
@@ -211,10 +208,7 @@ def recover_plaintext_timing(
     progress_callback: ProgressCallback | None = None,
 ) -> tuple[bytes, int]:
     """Recover all plaintext blocks without stripping PKCS#7 padding."""
-    if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
-        raise AttackError("ciphertext must include IV and be a multiple of 16 bytes")
-
-    num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+    num_blocks = require_ciphertext_with_iv(ciphertext)
     recovered_blocks: dict[int, bytes] = {}
     total_queries = 0
 
