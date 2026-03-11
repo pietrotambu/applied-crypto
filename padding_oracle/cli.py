@@ -160,6 +160,7 @@ def run_timing(args: argparse.Namespace) -> None:
             CONSOLE.kv("queries", queries)
             CONSOLE.kv("elapsed_ms", f"{elapsed_ms:.2f}")
             CONSOLE.kv("recovered_hex", recovered.hex())
+            CONSOLE.kv("recovered_text", repr(_decode_recovered_text(recovered)))
             if not ok:
                 CONSOLE.kv("expected_hex", expected.hex())
             CONSOLE.kv("success", CONSOLE.ok_label(ok))
@@ -205,6 +206,7 @@ def run_attacker(args: argparse.Namespace) -> None:
     CONSOLE.kv("queries", queries)
     CONSOLE.kv("elapsed_ms", f"{elapsed_ms:.2f}")
     CONSOLE.kv("recovered_hex", recovered.hex())
+    CONSOLE.kv("recovered_text", repr(_decode_recovered_text(recovered)))
 
     if verify_mac_key is None:
         CONSOLE.kv("success", "N/A (provide --verify-mac-key to validate)")
@@ -331,14 +333,28 @@ def _resolve_target_block_index(
     msg_len: int,
     requested: int | None,
 ) -> tuple[int, str]:
-    """Resolve manual target index or pick a safe default target block."""
+    """Resolve manual target index or default to fourth-last payload block."""
     if requested is None:
-        return utils.choose_single_block_target(ciphertext, msg_len=msg_len)
+        if len(ciphertext) < 2 * crypto.BLOCK_SIZE or len(ciphertext) % crypto.BLOCK_SIZE != 0:
+            raise ValueError("ciphertext must include IV and be a multiple of 16 bytes")
+        _ = msg_len  # kept for call-site symmetry with previous selector variants
+        num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+        last_payload_block = num_blocks - 1
+        if last_payload_block >= 4:
+            return last_payload_block - 3, "fourth_last_payload_block"
+        if last_payload_block <= 1:
+            return 1, "only_payload_block"
+        return 1, "first_payload_block_fallback"
 
     num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
     if requested < 1 or requested >= num_blocks:
         raise ValueError(f"target block index {requested} out of range [1,{num_blocks - 1}]")
     return requested, "manual_payload_block"
+
+
+def _decode_recovered_text(block: bytes) -> str:
+    """Best-effort UTF-8 rendering for a recovered plaintext block."""
+    return block.decode("utf-8", errors="replace")
 
 
 def _build_queries_progress_callback(

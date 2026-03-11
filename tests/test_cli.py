@@ -52,7 +52,7 @@ class CliHelpersTests(unittest.TestCase):
                 requested=num_blocks,
             )
 
-    def test_resolve_target_block_index_uses_default_utility(self) -> None:
+    def test_resolve_target_block_index_defaults_to_fourth_last_payload_block(self) -> None:
         enc_key = crypto.random_bytes(32)
         mac_key = crypto.random_bytes(32)
         service = services.MacThenEncryptService(enc_key, mac_key)
@@ -64,9 +64,33 @@ class CliHelpersTests(unittest.TestCase):
             msg_len=len(msg),
             requested=None,
         )
-        expected_index, expected_name = utils.choose_single_block_target(ciphertext, msg_len=len(msg))
-        self.assertEqual(block_index, expected_index)
-        self.assertEqual(name, expected_name)
+        num_blocks = len(ciphertext) // crypto.BLOCK_SIZE
+        self.assertEqual(block_index, num_blocks - 4)
+        self.assertEqual(name, "fourth_last_payload_block")
+
+    def test_resolve_target_block_index_falls_back_to_first_payload_block(self) -> None:
+        ciphertext = b"\x00" * (4 * crypto.BLOCK_SIZE)  # IV + three payload blocks
+        block_index, name = cli._resolve_target_block_index(
+            ciphertext=ciphertext,
+            msg_len=0,
+            requested=None,
+        )
+        self.assertEqual(block_index, 1)
+        self.assertEqual(name, "first_payload_block_fallback")
+
+    def test_resolve_target_block_index_defaults_to_only_payload_block_when_needed(self) -> None:
+        ciphertext = b"\x00" * (2 * crypto.BLOCK_SIZE)  # IV + one payload block
+        block_index, name = cli._resolve_target_block_index(
+            ciphertext=ciphertext,
+            msg_len=0,
+            requested=None,
+        )
+        self.assertEqual(block_index, 1)
+        self.assertEqual(name, "only_payload_block")
+
+    def test_decode_recovered_text_uses_replacement(self) -> None:
+        self.assertEqual(cli._decode_recovered_text(b"abc"), "abc")
+        self.assertIn("\ufffd", cli._decode_recovered_text(bytes.fromhex("61ff62")))
 
 
 if __name__ == "__main__":
