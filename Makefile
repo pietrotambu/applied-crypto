@@ -13,7 +13,6 @@ help:
 	@echo "  venv              Create local virtual environment in .venv"
 	@echo "  install           Install dependencies from requirements.txt"
 	@echo "  install-editable  Install package in editable mode (adds padding-oracle command)"
-	@echo "  run               Run any CLI command. Example: make run COMMAND='boolean'"
 	@echo "  boolean           Run boolean-oracle demo (use ARGS for options)"
 	@echo "  timing            Run self-contained local timing attack demo (use ARGS for options)"
 	@echo "  victim            Run victim/oracle server (use ARGS for options)"
@@ -32,15 +31,6 @@ install: $(PYTHON)
 
 install-editable: $(PYTHON)
 	@$(PIP) install -q -e .
-
-run: $(PYTHON)
-	@if [ -z "$(COMMAND)" ]; then \
-		echo "Usage: make run COMMAND='boolean'"; \
-		echo "Example: make run COMMAND='timing --message-kb 1'"; \
-		exit 1; \
-	fi
-	$(CLI) $(COMMAND)
-
 
 boolean: $(PYTHON)
 	$(CLI) boolean $(ARGS)
