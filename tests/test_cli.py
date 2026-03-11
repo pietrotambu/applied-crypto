@@ -92,6 +92,12 @@ class CliHelpersTests(unittest.TestCase):
         self.assertEqual(cli._decode_recovered_text(b"abc"), "abc")
         self.assertIn("\ufffd", cli._decode_recovered_text(bytes.fromhex("61ff62")))
 
+    def test_expected_message_prefix_for_block(self) -> None:
+        msg = b"0123456789abcdefXYZ"
+        self.assertEqual(cli._expected_message_prefix_for_block(msg, 1), b"0123456789abcdef")
+        self.assertEqual(cli._expected_message_prefix_for_block(msg, 2), b"XYZ")
+        self.assertEqual(cli._expected_message_prefix_for_block(msg, 3), b"")
+
 
 if __name__ == "__main__":
     unittest.main()

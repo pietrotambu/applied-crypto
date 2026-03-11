@@ -116,21 +116,11 @@ make attacker ARGS='--addr <victim_ip>:4000 --message-kb 16 --log-progress'
 python3 -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16 --log-progress
 ```
 
-3. Optional validation:
-```bash
-# with make
-make attacker ARGS='--addr <victim_ip>:4000 --message-kb 16 --verify-mac-key <hex_mac_key>'
-# without make
-python3 -m padding_oracle.cli attacker \
-  --addr <victim_ip>:4000 \
-  --message-kb 16 \
-  --verify-mac-key <hex_mac_key>
-```
-
 Notes:
 - Victim must bind to a reachable interface (`0.0.0.0` or specific LAN IP).
 - Ensure firewall/security group allows TCP on the chosen port.
 - `timing` remains the self-contained localhost demo; `attacker` is the split-mode command.
+- `attacker` now validates recovery directly against the known message bytes for the targeted block and reports `verified_bytes`.
 - Victim stdout includes parse-friendly lines: `ENC_KEY_HEX=...` and `MAC_KEY_HEX=...`.
 
 ## Running Tests

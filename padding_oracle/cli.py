@@ -52,10 +52,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_attacker.add_argument("--message")
     p_attacker.add_argument("--message-kb", type=float)
     p_attacker.add_argument("--target-block-index", type=int, help="1-based payload block index to recover")
-    p_attacker.add_argument(
-        "--verify-mac-key",
-        help="optional hex MAC key to verify recovered block against expected payload",
-    )
     p_attacker.add_argument("--timeout", type=float, default=2.0, help="TCP connect timeout in seconds")
     p_attacker.add_argument(
         "--log-progress",
@@ -176,9 +172,6 @@ def run_attacker(args: argparse.Namespace) -> None:
     msg, message_mode, message_kb = _resolve_message_bytes(args.message, args.message_kb)
     cfg = _timing_config()
     progress_callback = _build_queries_progress_callback(args.log_progress)
-    verify_mac_key = (
-        utils.parse_hex_mac_key(args.verify_mac_key) if args.verify_mac_key is not None else None
-    )
 
     CONSOLE.section("Timing Oracle Attacker")
     CONSOLE.kv("victim", args.addr)
@@ -207,15 +200,20 @@ def run_attacker(args: argparse.Namespace) -> None:
     CONSOLE.kv("elapsed_ms", f"{elapsed_ms:.2f}")
     CONSOLE.kv("recovered_hex", recovered.hex())
     CONSOLE.kv("recovered_text", repr(_decode_recovered_text(recovered)))
+    expected_prefix = _expected_message_prefix_for_block(msg, target_block_index)
+    verified = len(expected_prefix)
+    CONSOLE.kv("verified_bytes", f"{verified}/{crypto.BLOCK_SIZE}")
 
-    if verify_mac_key is None:
-        CONSOLE.kv("success", "N/A (provide --verify-mac-key to validate)")
+    if verified == 0:
+        CONSOLE.kv("success", CONSOLE.ok_label(False))
+        CONSOLE.kv("note", "target block has no message bytes (MAC/padding only)")
         return
 
-    expected = utils.expected_payload_block(msg, verify_mac_key, target_block_index)
-    ok = recovered == expected
+    ok = recovered[:verified] == expected_prefix
     if not ok:
-        CONSOLE.kv("expected_hex", expected.hex())
+        CONSOLE.kv("expected_message_prefix_hex", expected_prefix.hex())
+    if verified < crypto.BLOCK_SIZE:
+        CONSOLE.kv("note", "only message-prefix bytes are verifiable for this block")
     CONSOLE.kv("success", CONSOLE.ok_label(ok))
 
 
@@ -355,6 +353,17 @@ def _resolve_target_block_index(
 def _decode_recovered_text(block: bytes) -> str:
     """Best-effort UTF-8 rendering for a recovered plaintext block."""
     return block.decode("utf-8", errors="replace")
+
+
+def _expected_message_prefix_for_block(message: bytes, block_index: int) -> bytes:
+    """Return known message bytes covered by the target payload block."""
+    if block_index < 1:
+        raise ValueError("block_index must be >= 1")
+    start = (block_index - 1) * crypto.BLOCK_SIZE
+    if start >= len(message):
+        return b""
+    end = min(start + crypto.BLOCK_SIZE, len(message))
+    return message[start:end]
 
 
 def _build_queries_progress_callback(
