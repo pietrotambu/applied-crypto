@@ -1,6 +1,6 @@
 """Simulated noise experiment for Section 5.4."""
 
-import argparse, random, time
+import argparse, random, time, csv
 from collections import defaultdict
 
 from padding_oracle import attacks, crypto, process, protocol, utils
@@ -99,6 +99,17 @@ def summary(results):
         avg_time_ms = sum(r["elapsed_ms"] for r in runs) / len(runs)
         print(f"{jitter_us:10.1f} {success_rate:>12} {avg_queries:>12} {avg_time_ms:>12}")
 
+
+def save_csv(results, filename="noise_results.csv"):
+    """Save results to CSV"""
+    keys = results[0].keys()
+
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(results)
+    print(f"\nResults saved to {filename}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--message-kb", type=float, default=1.0)
@@ -114,6 +125,7 @@ def main():
 
     results = run_experiment(args.message_kb, args.jitter_levels_us, args.runs)
     summary(results)
+    save_csv(results)
 
 if __name__ == "__main__":
     main()
