@@ -13,6 +13,7 @@ This repository implements:
 - `padding_oracle/process.py`: subprocess/socket helpers for orchestration.
 - `padding_oracle/cli.py`: command entrypoints for `server`/`victim`, `attacker`, `boolean`, and `timing`.
 - `padding_oracle/timing_stats.py`: long-path vs short-path timing separation utility.
+- `padding_oracle/noise_experiment.py`: timing attack robustness experiment under synthetic jitter.
 - `tests/`: unit tests.
 
 ## Quickstart (Make or Direct Python)
@@ -68,6 +69,14 @@ python3 -m padding_oracle.cli timing --message-kb 4
 # timing demo with explicit message
 make timing ARGS="--message 'hello world'"
 python3 -m padding_oracle.cli timing --message "hello world"
+
+# noise robustness experiment
+make noise-experiment
+python3 -m padding_oracle.noise_experiment
+
+# custom jitter levels, run count, and output CSV
+make noise-experiment ARGS='--message-kb 1 --runs 3 --jitter-levels-us 0 25 50 100'
+python3 -m padding_oracle.noise_experiment --message-kb 1 --runs 3 --jitter-levels-us 0 25 50 100
 ```
 
 Run split victim/attacker mode:
