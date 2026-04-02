@@ -6,7 +6,7 @@ CLI ?= $(PYTHON) -m padding_oracle.cli
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv install install-editable run boolean timing victim attacker noise-experiment task4 task4-netem timing-stats test
+.PHONY: help venv install install-editable run boolean timing victim attacker noise-experiment task4 task4-netem timing-stats test zip
 
 help:
 	@echo "Targets:"
@@ -20,6 +20,7 @@ help:
 	@echo "  noise-experiment  Run timing robustness experiment under injected jitter (use ARGS for options)"
 	@echo "  timing-stats      Analyze timing path separation stats (use ARGS for options)"
 	@echo "  test              Run unit tests"
+	@echo "  zip			   Create submission ZIP with code, tests, README, and Makefile"
 
 $(PYTHON):
 	@$(SYSTEM_PYTHON) -m venv $(VENV_DIR)
@@ -53,6 +54,9 @@ timing-stats: $(PYTHON)
 
 test: $(PYTHON)
 	$(PYTHON) -m unittest discover -s tests -v
+
+zip:
+	@zip -r code.zip README.md Makefile pyproject.toml requirements.txt padding_oracle tests -x "**/__pycache__/*"
 
 submit-%: ./batch/%.sub
 	@bsub < ./batch/$*.sub

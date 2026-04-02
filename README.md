@@ -18,29 +18,32 @@ This project has two main parts:
 ## Compilation and Installation
 
 This is a Python project, so there is no compile step before running.
-Installation means creating virtual environment and installing packages.
+Installation means installing required Python packages.
+This README uses local virtual environment (`.venv`) for all commands.
 
 Prerequisites:
 - Python `>=3.10` (in `Makefile`, default is `python3.12` with `SYSTEM_PYTHON`).
+- `python3-pip` for package install.
+- `python3-venv` (required).
 - `make` (optional, but useful).
 
-Setup with `make`:
+Ubuntu 24.04 package install:
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv make
+```
+
+Option A: setup with `make`:
 ```bash
 make venv
 make install
 ```
 
-Setup without `make`:
+Option B: setup without `make`:
 ```bash
 python3 -m venv .venv
-
-# Windows PowerShell:
-.venv\Scripts\Activate.ps1
-# macOS/Linux:
-source .venv/bin/activate
-
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
 Optional editable install (adds `padding-oracle` command):
@@ -49,7 +52,7 @@ Optional editable install (adds `padding-oracle` command):
 make install-editable
 
 # without make
-python3 -m pip install -e .
+.venv/bin/python -m pip install -e .
 ```
 
 Quick sanity check:
