@@ -1,36 +1,36 @@
 # CBC Padding Oracle Project
 
-This repository implements:
-- Classic CBC padding-oracle plaintext recovery (boolean oracle).
-- Timing-oracle attack against a MAC-then-encrypt CBC receiver.
+This project has two main parts:
+- Task 2: classic CBC padding-oracle plaintext recovery (boolean oracle).
+- Task 3/4: timing-oracle block recovery against MAC-then-encrypt receiver.
 
 ## Repository Structure
 
-- `padding_oracle/crypto.py`: AES-CBC and PKCS#7 primitives.
-- `padding_oracle/services.py`: vulnerable services for Task 2 and Task 3/4.
-- `padding_oracle/protocol.py`: line-based TCP protocol (`ENCRYPT`, `CHECK`).
-- `padding_oracle/attacks/`: boolean and timing attack implementations.
-- `padding_oracle/process.py`: subprocess/socket helpers for orchestration.
-- `padding_oracle/cli.py`: command entrypoints for `server`/`victim`, `attacker`, `boolean`, and `timing`.
-- `padding_oracle/timing_stats.py`: long-path vs short-path timing separation utility.
-- `padding_oracle/noise_experiment.py`: timing attack robustness experiment under synthetic jitter.
+- `padding_oracle/crypto.py`: AES-CBC and PKCS#7 functions.
+- `padding_oracle/services.py`: vulnerable oracle/receiver services.
+- `padding_oracle/protocol.py`: TCP protocol (`ENCRYPT`, `CHECK`).
+- `padding_oracle/attacks/`: boolean and timing attack code.
+- `padding_oracle/cli.py`: CLI commands (`server`, `victim`, `boolean`, `timing`, `attacker`).
+- `padding_oracle/timing_stats.py`: benchmark for long path vs short path.
+- `padding_oracle/noise_experiment.py`: benchmark with injected timing noise.
 - `tests/`: unit tests.
 
-## Quickstart (Make or Direct Python)
+## Compilation and Installation
+
+This is a Python project, so there is no compile step before running.
+Installation means creating virtual environment and installing packages.
 
 Prerequisites:
-- Python 3.10+
-- `make` (optional)
+- Python `>=3.10` (in `Makefile`, default is `python3.12` with `SYSTEM_PYTHON`).
+- `make` (optional, but useful).
 
-If you do not have `make`, use the direct Python commands below.
-
-Environment setup with `make`:
+Setup with `make`:
 ```bash
 make venv
 make install
 ```
 
-Environment setup without `make`:
+Setup without `make`:
 ```bash
 python3 -m venv .venv
 
@@ -43,7 +43,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt
 ```
 
-Optional editable install:
+Optional editable install (adds `padding-oracle` command):
 ```bash
 # with make
 make install-editable
@@ -52,59 +52,113 @@ make install-editable
 python3 -m pip install -e .
 ```
 
-Run task demos:
+Quick sanity check:
+```bash
+.venv/bin/python -m padding_oracle.cli --help
+```
+
+## Running the test cases
+
+Run all tests:
+```bash
+# with make
+make test
+
+# without make
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+How to interpret test output:
+- If one test is good, it ends with `... ok`.
+- At the end you should see `OK` for full pass.
+- If you see `FAIL` or `ERROR`, tests did not pass.
+- Non-zero exit code also means there is failing/error test.
+
+## Running benchmarks
+
+### 1) Timing path-separation benchmark (`timing_stats.py`)
+
+This benchmark measures timing gap between two cases:
+- `long path`: padding is valid, then MAC check runs (and fails after).
+- `short path`: padding is invalid, so reject happens early.
+
+Commands:
+```bash
+# with make
+make timing-stats ARGS='--trials 10000 --warmup 500 --message-kb 1'
+make timing-stats ARGS="--trials 10000 --warmup 500 --message 'hello world'"
+
+# without make
+.venv/bin/python -m padding_oracle.timing_stats --trials 10000 --warmup 500 --message-kb 1
+.venv/bin/python -m padding_oracle.timing_stats --trials 10000 --warmup 500 --message "hello world"
+```
+
+How to interpret output:
+- `delta_avg_ms (long-short)`: if positive, long path is slower (this is expected leak direction).
+- `signal: LONG>SHORT`: expected sign, usually good for attack signal.
+- `signal: LONG<SHORT` or very close to zero: weak signal, use more trials or less noise.
+
+### 2) Noise robustness benchmark (`noise_experiment.py`)
+
+This benchmark repeats timing recovery with added Gaussian jitter.
+It reports success rate and cost.
+
+Commands:
+```bash
+# with make
+make noise-experiment
+make noise-experiment ARGS='--message-kb 1 --runs 5 --jitter-levels-us 0 10 25 50 100 250'
+
+# without make
+.venv/bin/python -m padding_oracle.noise_experiment
+.venv/bin/python -m padding_oracle.noise_experiment --message-kb 1 --runs 5 --jitter-levels-us 0 10 25 50 100 250
+```
+
+How to interpret output:
+- Each run prints `success`, `queries`, and `elapsed_ms`.
+- Final table has:
+  - `jitter_us`: jitter level (microseconds).
+  - `success_rate`: how many runs succeeded at this jitter.
+  - `avg_queries`: average oracle queries.
+  - `avg_time_ms`: average runtime.
+- Script also writes detailed rows to `noise_results.csv`.
+- Usually with larger jitter, `success_rate` goes down and query/time go up.
+
+## Task Demos
+
+Run local demos:
 ```bash
 # boolean demo
 make boolean
-python3 -m padding_oracle.cli boolean
+.venv/bin/python -m padding_oracle.cli boolean
 
 # timing demo
 make timing
-python3 -m padding_oracle.cli timing
+.venv/bin/python -m padding_oracle.cli timing
 
-# timing demo with --message-kb 4
+# timing demo with message size override
 make timing ARGS='--message-kb 4'
-python3 -m padding_oracle.cli timing --message-kb 4
-
-# timing demo with explicit message
-make timing ARGS="--message 'hello world'"
-python3 -m padding_oracle.cli timing --message "hello world"
-
-# noise robustness experiment
-make noise-experiment
-python3 -m padding_oracle.noise_experiment
-
-# custom jitter levels, run count, and output CSV
-make noise-experiment ARGS='--message-kb 1 --runs 3 --jitter-levels-us 0 25 50 100'
-python3 -m padding_oracle.noise_experiment --message-kb 1 --runs 3 --jitter-levels-us 0 25 50 100
+.venv/bin/python -m padding_oracle.cli timing --message-kb 4
 ```
 
-Run split victim/attacker mode:
-```bash
-# victim
-make victim ARGS='--addr 0.0.0.0:4000'
-python3 -m padding_oracle.cli victim --addr 0.0.0.0:4000
-
-# attacker
-make attacker ARGS='--addr 127.0.0.1:4000 --message-kb 1'
-python3 -m padding_oracle.cli attacker --addr 127.0.0.1:4000 --message-kb 1
-```
-
-## Distributed Victim/Attacker Setup (Two Machines)
+## Split Victim/Attacker Setup (Two Machines)
 
 1. Start victim/oracle on machine B:
 ```bash
 # with make
 make victim ARGS='--addr 0.0.0.0:4000'
+
 # without make
-python3 -m padding_oracle.cli victim --addr 0.0.0.0:4000
+.venv/bin/python -m padding_oracle.cli victim --addr 0.0.0.0:4000
 ```
-You can also pin keys explicitly:
+
+Optional fixed keys:
 ```bash
 # with make
 make victim ARGS='--addr 0.0.0.0:4000 --enc-key <hex_aes_key> --mac-key <hex_mac_key>'
+
 # without make
-python3 -m padding_oracle.cli victim \
+.venv/bin/python -m padding_oracle.cli victim \
   --addr 0.0.0.0:4000 \
   --enc-key <hex_aes_key> \
   --mac-key <hex_mac_key>
@@ -114,43 +168,21 @@ python3 -m padding_oracle.cli victim \
 ```bash
 # with make
 make attacker ARGS='--addr <victim_ip>:4000 --message-kb 16'
+
 # without make
-python3 -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16
+.venv/bin/python -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16
 ```
-Progress logging:
+
+Enable progress logging:
 ```bash
 # with make
 make attacker ARGS='--addr <victim_ip>:4000 --message-kb 16 --log-progress'
+
 # without make
-python3 -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16 --log-progress
+.venv/bin/python -m padding_oracle.cli attacker --addr <victim_ip>:4000 --message-kb 16 --log-progress
 ```
 
 Notes:
-- Victim must bind to a reachable interface (`0.0.0.0` or specific LAN IP).
-- Ensure firewall/security group allows TCP on the chosen port.
-- `timing` remains the self-contained localhost demo; `attacker` is the split-mode command.
-- `attacker` now validates recovery directly against the known message bytes for the targeted block and reports `verified_bytes`.
-- Victim stdout includes parse-friendly lines: `ENC_KEY_HEX=...` and `MAC_KEY_HEX=...`.
-
-## Running Tests
-
-Run all unit tests:
-```bash
-# with make
-make test
-# without make
-python3 -m unittest discover -s tests -v
-```
-
-## Timing Statistics
-
-Compare long-path vs short-path timing over many checks:
-```bash
-# with make
-make timing-stats ARGS='--trials 10000 --warmup 500 --message-kb 1'
-make timing-stats ARGS="--trials 10000 --warmup 500 --message 'hello world'"
-
-# without make
-python3 -m padding_oracle.timing_stats --trials 10000 --warmup 500 --message-kb 1
-python3 -m padding_oracle.timing_stats --trials 10000 --warmup 500 --message "hello world"
-```
+- Victim must bind to a reachable interface (`0.0.0.0` or a specific LAN IP).
+- Open firewall/security rules for the selected TCP port.
+- `timing` is a self-contained localhost demo; `attacker` is the split deployment command.

@@ -1,12 +1,12 @@
 """Timing-oracle padding attack utilities.
 
-This implementation keeps the original strong attack behavior, but factors the
+This implementation keeps the original strong attack behavior but factors the
 refinement logic into shared helpers so the flow stays compact and readable.
 """
 
-from dataclasses import dataclass
 import math
 from typing import Callable
+from dataclasses import dataclass
 
 from .. import crypto
 from .common import (

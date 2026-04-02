@@ -49,7 +49,7 @@ def forge_candidate(
     curr: bytes,
     prefix: bytes = b"",
 ) -> tuple[bytearray, bytes]:
-    """Forge a candidate ciphertext for one byte guess and return `(prev', ciphertext)`."""
+    """Forge a candidate ciphertext for one byte guess and return `(prev, ciphertext)`."""
     candidate_prev = bytearray(base_prev)
     candidate_prev[pos] = guess
     forged = prefix + bytes(candidate_prev) + curr

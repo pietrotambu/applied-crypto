@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
 import time
+import argparse
 from typing import Callable
 
 from . import attacks, crypto, process, protocol, services, utils

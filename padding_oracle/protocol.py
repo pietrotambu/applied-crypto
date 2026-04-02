@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import time
 import base64
 import socket
-import time
 from typing import Protocol
 
 from . import utils
