@@ -6,7 +6,7 @@ CLI ?= $(PYTHON) -m padding_oracle.cli
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv install install-editable run boolean timing victim attacker noise-experiment task4 task4-netem timing-stats test zip
+.PHONY: help venv install install-editable boolean timing victim attacker noise-experiment timing-stats test zip
 
 help:
 	@echo "Targets:"
